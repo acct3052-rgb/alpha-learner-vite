@@ -876,7 +876,9 @@ const { useState, useEffect, useRef } = React
                     takeProfitPercent: ((Math.abs(takeProfit - price) / price) * 100).toFixed(2),
                     riskAmount: riskAmount.toFixed(2),
                     potentialProfit: (riskAmount * (this.config.takeProfitPercent / this.config.stopLossPercent)).toFixed(2),
-                    duration: `${this.config.positionDuration / 60000} minutos`
+                    duration: `${this.config.positionDuration / 60000} minutos`,
+                    score: signal.score || 0,
+                    accuracy: signal.accuracy || null
                 };
             }
 
@@ -1281,6 +1283,8 @@ Take Profit: $${data.takeProfit} (+${data.takeProfitPercent}%)
 Risco: $${data.riskAmount}
 Lucro Potencial: $${data.potentialProfit}
 Duração: ${data.duration}
+
+Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da Análise: ${data.accuracy}%` : ''}
                 `.trim();
 
                 navigator.clipboard.writeText(text);
@@ -5625,6 +5629,61 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                     <span style={{ color: '#888' }}>Duração:</span>
                                     <span style={{ color: '#fff' }}>{data.duration}</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Score e Precisão */}
+                        <div style={{
+                            marginBottom: '25px',
+                            padding: '15px',
+                            backgroundColor: 'rgba(0, 255, 136, 0.05)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(0, 255, 136, 0.2)'
+                        }}>
+                            <div style={{
+                                color: '#00ff88',
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                marginBottom: '12px'
+                            }}>📈 ANÁLISE DO SINAL</div>
+
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr',
+                                gap: '10px'
+                            }}>
+                                <div style={{
+                                    padding: '12px',
+                                    backgroundColor: 'rgba(255,255,255,0.05)',
+                                    borderRadius: '8px',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ color: '#888', fontSize: '11px', marginBottom: '5px' }}>Score de Confiança</div>
+                                    <div style={{
+                                        color: data.score >= 70 ? '#00ff88' : data.score >= 50 ? '#ffd700' : '#ff6b6b',
+                                        fontSize: '24px',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        {data.score}%
+                                    </div>
+                                </div>
+                                {data.accuracy !== null && (
+                                    <div style={{
+                                        padding: '12px',
+                                        backgroundColor: 'rgba(255,255,255,0.05)',
+                                        borderRadius: '8px',
+                                        textAlign: 'center'
+                                    }}>
+                                        <div style={{ color: '#888', fontSize: '11px', marginBottom: '5px' }}>Precisão da Análise</div>
+                                        <div style={{
+                                            color: data.accuracy >= 70 ? '#00ff88' : data.accuracy >= 50 ? '#ffd700' : '#ff6b6b',
+                                            fontSize: '24px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {data.accuracy}%
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
