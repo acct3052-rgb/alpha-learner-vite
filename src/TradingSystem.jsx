@@ -1856,8 +1856,54 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 return this.indicatorPerformance;
             }
 
-            getRecentLogs(limit = 50) {
-                return this.auditLogs.slice(-limit).reverse();
+            async getRecentLogs(limit = 50, forceReload = false) {
+                // Se forceReload ou se auditLogs está vazio, recarregar do Supabase
+                if (forceReload || this.auditLogs.length === 0) {
+                    try {
+                        const { data: logs, error } = await window.supabase
+                            .from('audit_logs')
+                            .select('*')
+                            .order('generated_at', { ascending: false })
+                            .limit(limit);
+
+                        if (!error && logs && logs.length > 0) {
+                            // Atualizar cache local com logs mais recentes
+                            const newLogs = logs.map(log => ({
+                                signalId: log.signal_id,
+                                generatedAt: log.generated_at,
+                                candleCloseTime: log.candle_close_time,
+                                timeDifference: log.time_difference,
+                                prices: log.prices,
+                                indicators: log.indicators,
+                                scoreRange: log.score_range,
+                                hourOfDay: log.hour_of_day,
+                                outcome: log.outcome,
+                                outcomeTime: log.outcome_time,
+                                reason: log.reason,
+                                metadata: log.metadata
+                            }));
+
+                            // Mesclar com logs existentes sem duplicar
+                            const existingIds = new Set(this.auditLogs.map(l => l.signalId));
+                            const logsToAdd = newLogs.filter(l => !existingIds.has(l.signalId));
+
+                            if (logsToAdd.length > 0) {
+                                this.auditLogs = [...logsToAdd, ...this.auditLogs];
+                                // Manter apenas últimos 500
+                                if (this.auditLogs.length > 500) {
+                                    this.auditLogs = this.auditLogs.slice(0, 500);
+                                }
+                            }
+
+                            return newLogs; // Retornar logs do Supabase
+                        }
+                    } catch (error) {
+                        console.error('Erro ao recarregar logs do Supabase:', error);
+                    }
+                }
+
+                // Retornar do cache local
+                return this.auditLogs.slice(0, limit);
             }
 
             exportToCSV() {
@@ -6917,9 +6963,10 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
             useEffect(() => {
                 if (!auditSystem) return;
-                
-                const updateData = () => {
-                    setLogs(auditSystem.getRecentLogs(50));
+
+                const updateData = async () => {
+                    const recentLogs = await auditSystem.getRecentLogs(50, true); // forceReload = true
+                    setLogs(recentLogs);
                     setAlerts(auditSystem.getHealthAlerts());
                     setPerfByHour(auditSystem.getPerformanceByHour());
                     setPerfByScore(auditSystem.getPerformanceByScore());
@@ -6975,11 +7022,12 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 }
             };
 
-            const handleClearOldData = () => {
+            const handleClearOldData = async () => {
                 if (!auditSystem) return;
                 if (confirm('Limpar logs com mais de 7 dias?')) {
                     auditSystem.clearOldData(7);
-                    setLogs(auditSystem.getRecentLogs(50));
+                    const recentLogs = await auditSystem.getRecentLogs(50, true);
+                    setLogs(recentLogs);
                     alert('Dados antigos removidos!');
                 }
             };
