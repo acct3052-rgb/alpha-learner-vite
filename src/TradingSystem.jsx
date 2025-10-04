@@ -5551,7 +5551,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                         />
                         
                         {currentView === 'dashboard' && (
-                            <Dashboard 
+                            <Dashboard
                                 signals={signals}
                                 alphaEngine={alphaEngine}
                                 minScore={minScore}
@@ -5570,6 +5570,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                 setAssetType={setAssetType}
                                 symbol={symbol}
                                 setSymbol={setSymbol}
+                                memoryDB={memoryDB}
                             />
                         )}
                         
@@ -6096,7 +6097,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
         /* COMPONENTES REACT - Dashboard e Performance (COM ATUALIZAÇÃO EM TEMPO REAL) */
 
-        function Dashboard({ signals, alphaEngine, minScore, setMinScore, dismissSignal, copySignalDetails, riskAmount, setRiskAmount, maxPositions, setMaxPositions, formatBRL, orderExecutor, mode, updateTrigger,assetType,setAssetType,symbol,setSymbol }) {
+        function Dashboard({ signals, alphaEngine, minScore, setMinScore, dismissSignal, copySignalDetails, riskAmount, setRiskAmount, maxPositions, setMaxPositions, formatBRL, orderExecutor, mode, updateTrigger, assetType, setAssetType, symbol, setSymbol, memoryDB }) {
             const [metrics, setMetrics] = useState({ winRate: 0, totalPnL: 0, totalSignals: 0 });
            
             
