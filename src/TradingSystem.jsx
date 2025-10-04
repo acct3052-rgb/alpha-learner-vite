@@ -4895,11 +4895,28 @@ useEffect(() => {
                     const verificationTimerId = setTimeout(async () => {
                         clearTimeout(entryTimer);
 
-                        // MÉTODO APRIMORADO: Buscar candle exato de expiração por timestamp
-                        const expirationCandle = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
+                        // Função para tentar obter o candle com retry
+                        const getExpirationCandleWithRetry = async (maxRetries = 3, delayMs = 2000) => {
+                            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                                const candle = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
+                                if (candle) {
+                                    console.log(`✅ [BINARY] Candle de expiração obtido (tentativa ${attempt}/${maxRetries})`);
+                                    return candle;
+                                }
+
+                                if (attempt < maxRetries) {
+                                    console.log(`⏳ [BINARY] Candle não disponível, aguardando ${delayMs}ms... (tentativa ${attempt}/${maxRetries})`);
+                                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                                }
+                            }
+                            return null;
+                        };
+
+                        // MÉTODO APRIMORADO: Buscar candle exato de expiração por timestamp com retry
+                        const expirationCandle = await getExpirationCandleWithRetry();
 
                         if (!expirationCandle) {
-                            console.warn('⚠️ [BINARY] Candle de expiração não disponível');
+                            console.warn('⚠️ [BINARY] Candle de expiração não disponível após múltiplas tentativas');
                             verifySignalOutcome(signal, 'EXPIRADO', 0, null);
                             return;
                         }
@@ -5033,7 +5050,19 @@ useEffect(() => {
 
                     let result = 'EXPIRADO';
                     let pnl = 0;
-                    let currentPrice = forcedPrice || marketData.getLatestPrice().close;
+
+                    // Validar se temos um preço disponível
+                    let currentPrice = forcedPrice;
+                    if (!currentPrice) {
+                        const latestPrice = marketData.getLatestPrice();
+                        if (latestPrice && latestPrice.close) {
+                            currentPrice = latestPrice.close;
+                        } else {
+                            // Usar preço do sinal como fallback
+                            currentPrice = signal.price;
+                            console.warn('⚠️ [VERIFY] Preço atual não disponível, usando preço do sinal:', currentPrice);
+                        }
+                    }
 
                     // ✅ Se resultado já foi calculado (opções binárias), USAR ele!
                     if (forcedResult !== null) {
