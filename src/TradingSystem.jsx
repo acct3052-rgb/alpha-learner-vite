@@ -2261,7 +2261,17 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     // Buscar alguns candles ao redor do timestamp alvo
                     const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${timestamp - 600000}&endTime=${timestamp + 600000}&limit=20`;
                     const response = await fetch(url);
+
+                    if (!response.ok) {
+                        throw new Error(`API retornou ${response.status}: ${response.statusText}`);
+                    }
+
                     const data = await response.json();
+
+                    if (!Array.isArray(data)) {
+                        console.error('❌ Resposta da API não é um array:', data);
+                        return null;
+                    }
 
                     const candles = data.map(k => ({
                         timestamp: k[0],
@@ -4963,7 +4973,7 @@ useEffect(() => {
                             try {
                                 // Buscar candles ao redor do timestamp de expiração
                                 await marketDataRef.current.fetchSpecificCandleFromREST(
-                                    signal.symbol.replace('USDT', ''),
+                                    signal.symbol, // Usar símbolo completo (ex: BTCUSDT)
                                     expirationTimestamp,
                                     '5m'
                                 );
@@ -5112,7 +5122,7 @@ useEffect(() => {
                                     console.log(`🔍 [BINARY] Tentando busca proativa via REST API...`);
                                     try {
                                         await marketDataRef.current.fetchSpecificCandleFromREST(
-                                            signal.symbol.replace('USDT', ''),
+                                            signal.symbol, // Usar símbolo completo (ex: BTCUSDT)
                                             expirationTimestamp,
                                             '5m'
                                         );
