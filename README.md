@@ -1,77 +1,40 @@
 # 🚀 Alpha-Learner v2.5 - Vite Edition
 
-> ⚠️ **PROJETO EM MIGRAÇÃO** - Infraestrutura pronta, código em conversão
+## ✅ Status: Migração Completa
 
-## 📊 Status Atual
+Sistema de trading com Machine Learning totalmente migrado para Vite + React.
 
-### ✅ **Pronto**
-- ✅ Estrutura de pastas modular
+### Features
+- ✅ Sistema completo em React modular (8,220 linhas)
 - ✅ Vite + React + TensorFlow.js configurados
 - ✅ Supabase client modularizado
-- ✅ CSS extraído e otimizado
-- ✅ Build system funcionando
-- ✅ package.json completo
+- ✅ Build otimizado e funcionando
+- ✅ Watchdog anti-freeze para execução contínua
+- ✅ WebSocket com reconexão infinita
+- ✅ Auto-cleanup de memória
 
-### ⏳ **Em Progresso**
-- 🔄 Conversão das 7.700 linhas de código
-- 🔄 Modularização de componentes
-- 🔄 Extração de serviços
-
-## 🎯 Próximos Passos
-
-### **Opção 1: Migração Gradual** (Recomendado)
-
-Converter o código em etapas:
-
-1. **Sessão 1**: Extrair serviços core
-   - MemoryDB
-   - MarketData
-   - AlphaEngine
-
-2. **Sessão 2**: Componentes UI
-   - Dashboard
-   - SignalCard
-   - RobotView
-
-3. **Sessão 3**: Integração completa
-   - Testes end-to-end
-   - Build otimizado
-
-### **Opção 2: Continuar com Original**
-
-Use o `alpha-learner` original (index.html):
-- ✅ 100% funcional
-- ✅ Todas as features
-- ✅ Pronto para produção
-
-## 📦 Como Usar (Quando Pronto)
+## 📦 Como Usar
 
 ```bash
 npm install
-npm run dev    # Desenvolvimento
+npm run dev    # Desenvolvimento: http://localhost:3000
 npm run build  # Produção
+npm run preview # Preview da build
 ```
 
-## 🏗️ Estrutura Preparada
+## 🏗️ Estrutura
 
 ```
 src/
-├── components/     # Componentes React
-├── services/       # Lógica de negócio
-├── utils/          # Utilitários
-│   └── supabase.js # ✅ Pronto
-├── hooks/          # Custom hooks
+├── App.jsx           # Entry point
+├── TradingSystem.jsx # Sistema completo (8,220 linhas)
+├── utils/
+│   └── supabase.js   # Cliente Supabase
 └── styles/
-    └── main.css    # ✅ Pronto
+    └── main.css      # Estilos
 ```
-
-## 📝 Notas
-
-Este repositório é a **versão futura** do Alpha-Learner.
-Por enquanto, use o repositório original `alpha-learner`.
 
 ---
 
-**Versão**: 2.5.0-beta
-**Status**: Em desenvolvimento
-**Estimativa**: 2-4 horas para conclusão
+**Versão**: 2.5.0
+**Status**: Produção
