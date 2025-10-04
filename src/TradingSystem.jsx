@@ -9,7 +9,7 @@ import React from 'react'
 const { useState, useEffect, useRef } = React
 
 // Supabase já configurado em App.jsx
-const supabase = window.supabase.createClient()
+const supabase = window.supabase
 
 /* ========================================
    CLASSES E SERVIÇOS DO SISTEMA

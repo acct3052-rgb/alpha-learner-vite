@@ -10,7 +10,7 @@ import TradingSystemApp from './TradingSystem'
 
 // Expor dependências globalmente
 window.React = React
-window.supabase = { createClient: () => supabase }
+window.supabase = supabase
 window.tf = tf
 
 // Configuração de auditoria global
