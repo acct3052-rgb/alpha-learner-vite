@@ -1,10 +1,9 @@
 /*
- * Trading System - Sistema Completo de Trading
- * Convertido automaticamente do index.html para React moderno
+ * Alpha-Learner Trading System - Complete Implementation
+ * Convertido automaticamente para React moderno com Vite
  */
 
 import React from 'react'
-import * as ReactDOM from 'react-dom/client'
 
 // Usar hooks do React
 const { useState, useEffect, useRef } = React
@@ -12,11 +11,16 @@ const { useState, useEffect, useRef } = React
 // Supabase já configurado em App.jsx
 const supabase = window.supabase.createClient()
 
-// Variáveis globais já configuradas em App.jsx
+/* ========================================
+   CLASSES E SERVIÇOS DO SISTEMA
+   ======================================== */
 
-        /* ========================================
-           MÓDULO DE INTEGRAÇÃO DE APIs
-           ======================================== */
+// Configurações globais já definidas em App.jsx
+// supabase, auditSystemRef, debugAudit já disponíveis via window
+
+/* ========================================
+   MÓDULO DE INTEGRAÇÃO DE APIs
+   ======================================== */
 
         const API_PROVIDERS = {
             ALPHA_VANTAGE: {
@@ -4289,6 +4293,11 @@ calculateVolumeScore(volume) {
            COMPONENTE APP PRINCIPAL
            ======================================== */
 
+
+/* ========================================
+   COMPONENTE PRINCIPAL - APP
+   ======================================== */
+
         function App() {
             const [currentView, setCurrentView] = useState('dashboard');
             const [mode, setMode] = useState('manual');
@@ -7630,5 +7639,561 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
                                     30 dias
                                 </div>
                             </div>
+                        </div>
 
+                        <div className="metric-grid">
+                            <div className="metric-card">
+                                <div className="metric-value">{metrics.totalTrades}</div>
+                                <div className="metric-label">Total de Trades</div>
+                            </div>
+                            <div className="metric-card">
+                                <div className="metric-value" style={{ color: metrics.winRate >= 50 ? '#00ff88' : '#ff4757' }}>
+                                    {metrics.winRate.toFixed(1)}%
+                                </div>
+                                <div className="metric-label">Win Rate</div>
+                            </div>
+                            <div className="metric-card">
+                                <div className="metric-value" style={{ 
+                                    color: metrics.totalPnL >= 0 ? '#00ff88' : '#ff4757',
+                                    fontSize: '24px'
+                                }}>
+                                    {formatBRL(metrics.totalPnL)}
+                                </div>
+                                <div className="metric-label">P&L Total</div>
+                            </div>
+                            <div className="metric-card">
+                                <div className="metric-value" style={{ 
+                                    color: metrics.profitFactor >= 1.5 ? '#00ff88' : metrics.profitFactor >= 1 ? '#ffc107' : '#ff4757'
+                                }}>
+                                    {metrics.profitFactor.toFixed(2)}
+                                </div>
+                                <div className="metric-label">Profit Factor</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid">
+                        <div className="card">
+                            <h3>🎯 Métricas de Risco</h3>
+                            <div style={{ padding: '15px' }}>
+                                <div style={{ marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Sharpe Ratio</strong>
+                                        <span style={{ 
+                                            color: metrics.sharpeRatio >= 1.5 ? '#00ff88' : 
+                                                   metrics.sharpeRatio >= 1 ? '#ffc107' : '#ff4757',
+                                            fontSize: '18px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {metrics.sharpeRatio.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#a0a0a0' }}>
+                                        {metrics.sharpeRatio >= 2 ? '🌟 Excelente' : 
+                                         metrics.sharpeRatio >= 1.5 ? '✅ Muito Bom' :
+                                         metrics.sharpeRatio >= 1 ? '👍 Bom' :
+                                         metrics.sharpeRatio >= 0.5 ? '⚠️ Regular' : '❌ Ruim'}
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Max Drawdown</strong>
+                                        <span style={{ color: '#ff4757', fontSize: '18px', fontWeight: 'bold' }}>
+                                            {formatBRL(metrics.maxDrawdown)}
+                                        </span>
+                                    </div>
+                                    <div style={{ 
+                                        height: '8px', 
+                                        background: 'rgba(255,255,255,0.1)', 
+                                        borderRadius: '4px',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${Math.min(100, (metrics.maxDrawdown / Math.abs(metrics.totalPnL || 1)) * 100)}%`,
+                                            background: '#ff4757'
+                                        }}></div>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Recovery Factor</strong>
+                                        <span style={{ 
+                                            color: metrics.recoveryFactor >= 3 ? '#00ff88' : '#ffc107',
+                                            fontSize: '18px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {metrics.recoveryFactor.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#a0a0a0' }}>
+                                        Lucro / Max Drawdown {metrics.recoveryFactor >= 3 ? '(Ótimo)' : '(Melhorar)'}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Kelly Criterion</strong>
+                                        <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#00ff88' }}>
+                                            {(metrics.kellyCriterion * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#a0a0a0' }}>
+                                        Tamanho de posição sugerido
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="card">
+                            <h3>💰 Análise de Retornos</h3>
+                            <div style={{ padding: '15px' }}>
+                                <div style={{ marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Expectativa Matemática</strong>
+                                        <span style={{ 
+                                            color: metrics.expectancy >= 0 ? '#00ff88' : '#ff4757',
+                                            fontSize: '18px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {formatBRL(metrics.expectancy)}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#a0a0a0' }}>
+                                        Retorno esperado por trade
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Lucro Médio</strong>
+                                        <span style={{ color: '#00ff88', fontSize: '18px', fontWeight: 'bold' }}>
+                                            {formatBRL(metrics.avgWin)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Perda Média</strong>
+                                        <span style={{ color: '#ff4757', fontSize: '18px', fontWeight: 'bold' }}>
+                                            {formatBRL(metrics.avgLoss)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <strong>Tempo Médio</strong>
+                                        <span style={{ fontSize: '18px', fontWeight: 'bold' }}>
+                                            {metrics.avgDuration.toFixed(1)} min
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <h3>⏰ Performance por Horário</h3>
+                        <div style={{ padding: '15px' }}>
+                            {metrics.bestHour && (
+                                <div style={{ 
+                                    marginBottom: '15px', 
+                                    padding: '15px', 
+                                    background: 'rgba(0,255,136,0.1)',
+                                    border: '1px solid #00ff88',
+                                    borderRadius: '8px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <strong style={{ color: '#00ff88' }}>🏆 Melhor Horário: {metrics.bestHour.hour}:00h</strong>
+                                            <div style={{ fontSize: '13px', color: '#a0a0a0', marginTop: '5px' }}>
+                                                {metrics.bestHour.data.trades} trades | Win Rate: {metrics.bestHour.data.winRate.toFixed(1)}%
+                                            </div>
+                                        </div>
+                                        <div style={{ fontSize: '20px', color: '#00ff88', fontWeight: 'bold' }}>
+                                            {formatBRL(metrics.bestHour.data.pnl)}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {metrics.worstHour && (
+                                <div style={{ 
+                                    padding: '15px', 
+                                    background: 'rgba(255,71,87,0.1)',
+                                    border: '1px solid #ff4757',
+                                    borderRadius: '8px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <strong style={{ color: '#ff4757' }}>⚠️ Pior Horário: {metrics.worstHour.hour}:00h</strong>
+                                            <div style={{ fontSize: '13px', color: '#a0a0a0', marginTop: '5px' }}>
+                                                {metrics.worstHour.data.trades} trades | Win Rate: {metrics.worstHour.data.winRate.toFixed(1)}%
+                                            </div>
+                                        </div>
+                                        <div style={{ fontSize: '20px', color: '#ff4757', fontWeight: 'bold' }}>
+                                            {formatBRL(metrics.worstHour.data.pnl)}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <h3>📊 Performance por Score</h3>
+                        <div style={{ padding: '15px' }}>
+                            {Object.entries(metrics.scorePerformance).map(([range, data]) => (
+                                <div key={range} style={{
+                                    padding: '12px',
+                                    margin: '8px 0',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '8px',
+                                    background: 'rgba(255,255,255,0.02)'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <strong>Score: {range}%</strong>
+                                            <div style={{ fontSize: '13px', color: '#a0a0a0', marginTop: '5px' }}>
+                                                {data.trades} trades | Win Rate: {data.winRate.toFixed(1)}%
+                                            </div>
+                                        </div>
+                                        <div style={{ 
+                                            fontSize: '18px', 
+                                            fontWeight: 'bold',
+                                            color: data.pnl >= 0 ? '#00ff88' : '#ff4757'
+                                        }}>
+                                            {formatBRL(data.pnl)}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="grid">
+                        <div className="card">
+                            <h3>🔥 Sequências</h3>
+                            <div style={{ padding: '15px' }}>
+                                <div style={{ 
+                                    padding: '15px', 
+                                    background: 'rgba(0,255,136,0.1)',
+                                    borderRadius: '8px',
+                                    marginBottom: '15px'
+                                }}>
+                                    <div style={{ fontSize: '32px', color: '#00ff88', fontWeight: 'bold', textAlign: 'center' }}>
+                                        {metrics.maxWinStreak}
+                                    </div>
+                                    <div style={{ textAlign: 'center', color: '#a0a0a0', marginTop: '5px' }}>
+                                        Vitórias Consecutivas
+                                    </div>
+                                </div>
+                                
+                                <div style={{ 
+                                    padding: '15px', 
+                                    background: 'rgba(255,71,87,0.1)',
+                                    borderRadius: '8px'
+                                }}>
+                                    <div style={{ fontSize: '32px', color: '#ff4757', fontWeight: 'bold', textAlign: 'center' }}>
+                                        {metrics.maxLossStreak}
+                                    </div>
+                                    <div style={{ textAlign: 'center', color: '#a0a0a0', marginTop: '5px' }}>
+                                        Perdas Consecutivas
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="card">
+                            <h3>📈 Distribuição de Resultados</h3>
+                            <div style={{ padding: '15px' }}>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                        <span>Vitórias</span>
+                                        <strong style={{ color: '#00ff88' }}>{metrics.winRate.toFixed(1)}%</strong>
+                                    </div>
+                                    <div style={{ 
+                                        height: '8px', 
+                                        background: 'rgba(255,255,255,0.1)', 
+                                        borderRadius: '4px',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${metrics.winRate}%`,
+                                            background: '#00ff88'
+                                        }}></div>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '15px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                        <span>Derrotas</span>
+                                        <strong style={{ color: '#ff4757' }}>{metrics.lossRate.toFixed(1)}%</strong>
+                                    </div>
+                                    <div style={{ 
+                                        height: '8px', 
+                                        background: 'rgba(255,255,255,0.1)', 
+                                        borderRadius: '4px',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${metrics.lossRate}%`,
+                                            background: '#ff4757'
+                                        }}></div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                        <span>Expirados</span>
+                                        <strong style={{ color: '#ffc107' }}>{metrics.expiredRate.toFixed(1)}%</strong>
+                                    </div>
+                                    <div style={{ 
+                                        height: '8px', 
+                                        background: 'rgba(255,255,255,0.1)', 
+                                        borderRadius: '4px',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div style={{
+                                            height: '100%',
+                                            width: `${metrics.expiredRate}%`,
+                                            background: '#ffc107'
+                                        }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        function TelegramConfig({ telegramNotifier, showNotification }) {
+            const [botToken, setBotToken] = useState('');
+            const [chatId, setChatId] = useState('');
+            const [isTesting, setIsTesting] = useState(false);
+            const [isEnabled, setIsEnabled] = useState(false);
+
+            useEffect(() => {
+                if (telegramNotifier) {
+                    setIsEnabled(telegramNotifier.isEnabled());
+                }
+            }, [telegramNotifier]);
+
+            const handleSave = () => {
+                if (!botToken.trim() || !chatId.trim()) {
+                    showNotification('Preencha todos os campos');
+                    return;
+                }
+
+                telegramNotifier.configure(botToken.trim(), chatId.trim());
+                showNotification('✅ Configuração salva!');
+            };
+
+            const handleTest = async () => {
+                setIsTesting(true);
+                
+                try {
+                    const result = await telegramNotifier.testConnection();
+                    if (result.success) {
+                        showNotification('✅ Teste bem-sucedido! Verifique seu Telegram');
+                    } else {
+                        showNotification(`❌ ${result.message}`);
+                    }
+                } catch (error) {
+                    showNotification(`❌ Erro: ${error.message}`);
+                } finally {
+                    setIsTesting(false);
+                }
+            };
+
+            const handleToggle = () => {
+                try {
+                    if (isEnabled) {
+                        telegramNotifier.disable();
+                        setIsEnabled(false);
+                        showNotification('Notificações desativadas');
+                    } else {
+                        telegramNotifier.enable();
+                        setIsEnabled(true);
+                        showNotification('✅ Notificações ativadas!');
+                    }
+                } catch (error) {
+                    showNotification(`❌ ${error.message}`);
+                }
+            };
+
+            return (
+                <div>
+                    <div className="warning-box">
+                        📱 <strong>Como configurar:</strong><br/>
+                        1. Abra o Telegram e procure por <strong>@BotFather</strong><br/>
+                        2. Envie <code>/newbot</code> e siga as instruções<br/>
+                        3. Copie o <strong>Bot Token</strong> fornecido<br/>
+                        4. Procure seu bot e envie <code>/start</code><br/>
+                        5. Acesse <a href="https://api.telegram.org/botSEU_TOKEN/getUpdates" target="_blank" style={{color: '#00ff88'}}>
+                            api.telegram.org/botSEU_TOKEN/getUpdates
+                        </a><br/>
+                        6. Procure por <code>"chat":{"{"}id":NUMERO{"}"}</code> - esse é seu Chat ID
+                    </div>
+
+                    <div className="card">
+                        <h3>⚙️ Configuração do Telegram</h3>
+                        
+                        <div className="form-group">
+                            <label className="form-label">Bot Token</label>
+                            <input 
+                                type="password"
+                                className="form-input"
+                                placeholder="123456:ABC-DEF1234ghIkl..."
+                                value={botToken}
+                                onChange={(e) => setBotToken(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">Chat ID</label>
+                            <input 
+                                type="text"
+                                className="form-input"
+                                placeholder="123456789"
+                                value={chatId}
+                                onChange={(e) => setChatId(e.target.value)}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button 
+                                className="btn btn-primary"
+                                onClick={handleSave}
+                                style={{ flex: 1 }}
+                            >
+                                💾 Salvar
+                            </button>
+                            <button 
+                                className="btn btn-secondary"
+                                onClick={handleTest}
+                                disabled={isTesting || !telegramNotifier?.isConfigured()}
+                                style={{ flex: 1 }}
+                            >
+                                {isTesting ? '⏳ Testando...' : '🔍 Testar'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {telegramNotifier?.isConfigured() && (
+                        <div className="card">
+                            <h3>📢 Notificações</h3>
+                            
+                            <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center',
+                                padding: '20px',
+                                background: isEnabled ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.05)',
+                                borderRadius: '12px',
+                                border: `1px solid ${isEnabled ? '#00ff88' : 'rgba(255,255,255,0.1)'}`
+                            }}>
+                                <div>
+                                    <strong style={{ fontSize: '18px' }}>
+                                        {isEnabled ? '✅ Ativado' : '⭕ Desativado'}
+                                    </strong>
+                                    <div style={{ fontSize: '14px', color: '#a0a0a0', marginTop: '5px' }}>
+                                        {isEnabled ? 'Você receberá notificações de todos os sinais' : 'Ative para receber notificações'}
+                                    </div>
+                                </div>
+                                
+                                <div 
+                                    className={`toggle-switch ${isEnabled ? 'active' : ''}`}
+                                    onClick={handleToggle}
+                                    style={{ cursor: 'pointer' }}
+                                ></div>
+                            </div>
+
+                            {isEnabled && (
+                                <div style={{ marginTop: '20px', padding: '15px', background: 'rgba(0,255,136,0.1)', borderRadius: '8px' }}>
+                                    <strong style={{ color: '#00ff88' }}>📬 Você receberá notificações para:</strong>
+                                    <ul style={{ marginTop: '10px', paddingLeft: '20px', lineHeight: '1.8' }}>
+                                        <li>Novos sinais gerados</li>
+                                        <li>Ordens executadas (modo robô)</li>
+                                        <li>Stop Loss / Take Profit atingido</li>
+                                        <li>Relatório diário de performance</li>
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        function Settings({ minScore, setMinScore }) {
+            return (
+                <div>
+                    <div className="card">
+                        <h3>⚙️ Configurações</h3>
+                        <div className="form-group">
+                            <label className="form-label">Score Mínimo: {minScore}%</label>
+                            <input 
+                                type="range"
+                                min="50"
+                                max="95"
+                                value={minScore}
+                                onChange={(e) => setMinScore(Number(e.target.value))}
+                                className="form-input"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <h3>📚 Sobre</h3>
+                        <p style={{ lineHeight: '1.6', color: '#c0c0c0' }}>
+                            Plataforma de trading algorítmico com Machine Learning e sistema de auditoria integrado.
+                        </p>
+                        <div style={{ marginTop: '15px', fontSize: '14px', color: '#00ff88' }}>
+                            Versão: 2.3.0 | Build: 2024.006 | Atualização em Tempo Real Implementada
+                        </div>
+                        
+                        <div style={{ marginTop: '20px', padding: '15px', background: 'rgba(0, 255, 136, 0.1)', borderRadius: '8px', border: '1px solid rgba(0, 255, 136, 0.3)' }}>
+                            <h4 style={{ color: '#00ff88', marginBottom: '10px' }}>✨ Novidades v2.3</h4>
+                            <ul style={{ color: '#c0c0c0', lineHeight: '1.8', paddingLeft: '20px' }}>
+                                <li>✅ <strong>Atualização em tempo real</strong> de todas as métricas</li>
+                                <li>✅ <strong>Dashboard responsivo</strong> com dados sempre atualizados</li>
+                                <li>✅ <strong>Performance ao vivo</strong> sem necessidade de recarregar</li>
+                                <li>✅ <strong>ML Engine dinâmico</strong> com pesos adaptativos visíveis</li>
+                                <li>✅ <strong>Sistema de listeners</strong> para propagação de mudanças</li>
+                                <li>✅ <strong>Correções de bugs</strong> em cálculos de indicadores</li>
+                            </ul>
+                        </div>
+
+                        <div style={{ marginTop: '20px', padding: '15px', background: 'rgba(255, 193, 7, 0.1)', borderRadius: '8px', border: '1px solid rgba(255, 193, 7, 0.3)' }}>
+                            <h4 style={{ color: '#ffc107', marginBottom: '10px' }}>💡 Dicas de Uso</h4>
+                            <ul style={{ color: '#c0c0c0', lineHeight: '1.8', paddingLeft: '20px' }}>
+                                <li>Use o <strong>Modo Assistente</strong> para análise manual com alertas</li>
+                                <li>Use o <strong>Modo Robô</strong> para execução automática (DEMO)</li>
+                                <li>Conecte APIs reais para dados em tempo real</li>
+                                <li>Verifique a <strong>Auditoria</strong> para análise detalhada</li>
+                                <li>Digite <code>auditDiag()</code> no console para diagnóstico</li>
+                            </ul>
+                        </div>
+
+                        <div style={{ marginTop: '20px', padding: '15px', background: 'rgba(255, 71, 87, 0.1)', borderRadius: '8px', border: '1px solid rgba(255, 71, 87, 0.3)' }}>
+                            <h4 style={{ color: '#ff4757', marginBottom: '10px' }}>⚠️ Aviso Legal</h4>
+                            <p style={{ color: '#c0c0c0', lineHeight: '1.8', fontSize: '13px' }}>
+                                Este sistema é fornecido apenas para fins educacionais e de demonstração. 
+                                Trading de ativos financeiros envolve risco significativo de perda. 
+                                Não opere com capital que você não pode perder. 
+                                Os desenvolvedores não se responsabilizam por perdas financeiras.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+// Exportar componente principal
 export default App
