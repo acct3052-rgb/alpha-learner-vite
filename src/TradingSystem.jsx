@@ -5707,7 +5707,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
             if (!pendingSignal) return null;
 
             const data = pendingSignal.calculatedData;
-            const isLong = data.direction === 'LONG';
+            const isLong = data.direction === 'BUY'; // BUY = LONG, SELL = SHORT
 
             // Formatar tempo para exibição
             const formatTimeToEntry = () => {
