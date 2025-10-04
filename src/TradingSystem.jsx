@@ -4863,7 +4863,11 @@ useEffect(() => {
                             // Marcar candle atual como usado
                             lastSignalCandleTime = candleInfo.candleId;
 
-                            setSignals(prev => [signal, ...prev.slice(0, 9)]);
+                            setSignals(prev => {
+                                const newSignals = [signal, ...prev];
+                                // Manter apenas os 10 mais recentes
+                                return newSignals.slice(0, 10);
+                            });
                             showNotification(`Novo sinal ${signal.direction} - Score: ${signal.score}%`);
                             playAlert();
                             scheduleSignalVerification(signal);
@@ -6314,8 +6318,8 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             </div>
                         ) : (
                             <div className="grid">
-                                {signals.map(signal => (
-                                    <SignalCard 
+                                {signals.slice(0, 10).map(signal => (
+                                    <SignalCard
                                         key={signal ? signal.id : Math.random()}
                                         signal={signal}
                                         onDismiss={dismissSignal}
