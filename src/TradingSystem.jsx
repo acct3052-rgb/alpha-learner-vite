@@ -5501,39 +5501,41 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 }}>
                     <div style={{
                         backgroundColor: '#1a1a2e',
-                        borderRadius: '16px',
-                        padding: '30px',
-                        maxWidth: '500px',
+                        borderRadius: '12px',
+                        padding: '20px',
+                        maxWidth: '420px',
                         width: '90%',
+                        maxHeight: '90vh',
+                        overflowY: 'auto',
                         border: '2px solid ' + (isLong ? '#00ff88' : '#ff6b6b'),
                         boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
                     }}>
                         {/* Header */}
                         <div style={{
                             textAlign: 'center',
-                            marginBottom: '25px',
+                            marginBottom: '15px',
                             borderBottom: '1px solid rgba(255,255,255,0.1)',
-                            paddingBottom: '15px'
+                            paddingBottom: '12px'
                         }}>
-                            <div style={{ fontSize: '32px', marginBottom: '10px' }}>🔔</div>
+                            <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔔</div>
                             <h2 style={{
                                 color: '#00ff88',
-                                margin: '0 0 5px 0',
-                                fontSize: '24px'
-                            }}>NOVO SINAL DETECTADO</h2>
+                                margin: '0 0 4px 0',
+                                fontSize: '20px'
+                            }}>NOVO SINAL</h2>
                             <div style={{
                                 color: '#888',
-                                fontSize: '14px'
-                            }}>Modo Manual Ativo</div>
+                                fontSize: '12px'
+                            }}>Modo Manual</div>
 
                             {/* Countdown Timer */}
                             <div style={{
-                                marginTop: '15px',
-                                padding: '12px 20px',
+                                marginTop: '10px',
+                                padding: '8px 16px',
                                 background: timeToEntry <= 30 ? 'rgba(255, 215, 0, 0.2)' : 'rgba(0, 255, 136, 0.1)',
                                 border: `2px solid ${timeToEntry <= 30 ? '#ffd700' : '#00ff88'}`,
-                                borderRadius: '12px',
-                                fontSize: '18px',
+                                borderRadius: '8px',
+                                fontSize: '14px',
                                 fontWeight: 'bold',
                                 color: timeToEntry <= 30 ? '#ffd700' : '#00ff88',
                                 animation: timeToEntry <= 10 && timeToEntry > 0 ? 'pulse 1s infinite' : 'none'
@@ -5543,25 +5545,25 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                         </div>
 
                         {/* Dados principais */}
-                        <div style={{ marginBottom: '25px' }}>
+                        <div style={{ marginBottom: '12px' }}>
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
-                                marginBottom: '15px',
-                                padding: '15px',
+                                marginBottom: '10px',
+                                padding: '10px',
                                 backgroundColor: 'rgba(255,255,255,0.05)',
                                 borderRadius: '8px'
                             }}>
                                 <div>
-                                    <div style={{ color: '#888', fontSize: '12px' }}>Par</div>
-                                    <div style={{ color: '#fff', fontSize: '20px', fontWeight: 'bold' }}>{data.symbol}</div>
+                                    <div style={{ color: '#888', fontSize: '10px' }}>Par</div>
+                                    <div style={{ color: '#fff', fontSize: '16px', fontWeight: 'bold' }}>{data.symbol}</div>
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
-                                    <div style={{ color: '#888', fontSize: '12px' }}>Direção</div>
+                                    <div style={{ color: '#888', fontSize: '10px' }}>Direção</div>
                                     <div style={{
                                         color: isLong ? '#00ff88' : '#ff6b6b',
-                                        fontSize: '24px',
+                                        fontSize: '18px',
                                         fontWeight: 'bold'
                                     }}>
                                         {isLong ? '🟢 LONG' : '🔴 SHORT'}
@@ -5571,148 +5573,102 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: '1fr 1fr',
-                                gap: '10px',
-                                marginBottom: '15px'
+                                gridTemplateColumns: '1fr 1fr 1fr',
+                                gap: '8px',
+                                marginBottom: '10px'
                             }}>
                                 <div style={{
-                                    padding: '12px',
+                                    padding: '8px',
                                     backgroundColor: 'rgba(255,255,255,0.05)',
-                                    borderRadius: '8px'
+                                    borderRadius: '6px',
+                                    textAlign: 'center'
                                 }}>
-                                    <div style={{ color: '#888', fontSize: '11px', marginBottom: '5px' }}>Preço Atual</div>
-                                    <div style={{ color: '#fff', fontSize: '16px', fontWeight: 'bold' }}>${data.price}</div>
+                                    <div style={{ color: '#888', fontSize: '9px', marginBottom: '3px' }}>Preço</div>
+                                    <div style={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}>${data.price}</div>
                                 </div>
                                 <div style={{
-                                    padding: '12px',
+                                    padding: '8px',
                                     backgroundColor: 'rgba(255,255,255,0.05)',
-                                    borderRadius: '8px'
+                                    borderRadius: '6px',
+                                    textAlign: 'center'
                                 }}>
-                                    <div style={{ color: '#888', fontSize: '11px', marginBottom: '5px' }}>Quantidade</div>
-                                    <div style={{ color: '#fff', fontSize: '16px', fontWeight: 'bold' }}>{data.quantity}</div>
+                                    <div style={{ color: '#888', fontSize: '9px', marginBottom: '3px' }}>Qtd</div>
+                                    <div style={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}>{data.quantity}</div>
+                                </div>
+                                <div style={{
+                                    padding: '8px',
+                                    backgroundColor: data.score >= 70 ? 'rgba(0, 255, 136, 0.1)' : data.score >= 50 ? 'rgba(255, 215, 0, 0.1)' : 'rgba(255, 107, 107, 0.1)',
+                                    borderRadius: '6px',
+                                    textAlign: 'center',
+                                    border: `1px solid ${data.score >= 70 ? '#00ff88' : data.score >= 50 ? '#ffd700' : '#ff6b6b'}`
+                                }}>
+                                    <div style={{ color: '#888', fontSize: '9px', marginBottom: '3px' }}>Score</div>
+                                    <div style={{
+                                        color: data.score >= 70 ? '#00ff88' : data.score >= 50 ? '#ffd700' : '#ff6b6b',
+                                        fontSize: '14px',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        {data.score}%
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         {/* SL/TP */}
                         <div style={{
-                            marginBottom: '25px',
-                            padding: '15px',
+                            marginBottom: '12px',
+                            padding: '10px',
                             backgroundColor: 'rgba(255,255,255,0.03)',
                             borderRadius: '8px',
                             border: '1px solid rgba(255,255,255,0.1)'
                         }}>
                             <div style={{
                                 color: '#00ff88',
-                                fontSize: '14px',
+                                fontSize: '11px',
                                 fontWeight: 'bold',
-                                marginBottom: '12px'
+                                marginBottom: '8px'
                             }}>📊 RECOMENDAÇÃO</div>
 
-                            <div style={{ marginBottom: '10px' }}>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    marginBottom: '5px'
-                                }}>
-                                    <span style={{ color: '#ff6b6b' }}>🛑 Stop Loss:</span>
-                                    <span style={{ color: '#fff', fontWeight: 'bold' }}>${data.stopLoss} (-{data.stopLossPercent}%)</span>
-                                </div>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between'
-                                }}>
-                                    <span style={{ color: '#00ff88' }}>🎯 Take Profit:</span>
-                                    <span style={{ color: '#fff', fontWeight: 'bold' }}>${data.takeProfit} (+{data.takeProfitPercent}%)</span>
-                                </div>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                marginBottom: '4px',
+                                fontSize: '11px'
+                            }}>
+                                <span style={{ color: '#ff6b6b' }}>🛑 Stop Loss:</span>
+                                <span style={{ color: '#fff', fontWeight: 'bold' }}>${data.stopLoss} (-{data.stopLossPercent}%)</span>
+                            </div>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                marginBottom: '8px',
+                                fontSize: '11px'
+                            }}>
+                                <span style={{ color: '#00ff88' }}>🎯 Take Profit:</span>
+                                <span style={{ color: '#fff', fontWeight: 'bold' }}>${data.takeProfit} (+{data.takeProfitPercent}%)</span>
                             </div>
 
                             <div style={{
                                 borderTop: '1px solid rgba(255,255,255,0.1)',
-                                paddingTop: '10px',
-                                marginTop: '10px'
-                            }}>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    fontSize: '13px',
-                                    marginBottom: '5px'
-                                }}>
-                                    <span style={{ color: '#888' }}>Risco:</span>
-                                    <span style={{ color: '#ff6b6b' }}>${data.riskAmount}</span>
-                                </div>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    fontSize: '13px',
-                                    marginBottom: '5px'
-                                }}>
-                                    <span style={{ color: '#888' }}>Lucro Potencial:</span>
-                                    <span style={{ color: '#00ff88' }}>${data.potentialProfit}</span>
-                                </div>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    fontSize: '13px'
-                                }}>
-                                    <span style={{ color: '#888' }}>Duração:</span>
-                                    <span style={{ color: '#fff' }}>{data.duration}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Score e Precisão */}
-                        <div style={{
-                            marginBottom: '25px',
-                            padding: '15px',
-                            backgroundColor: 'rgba(0, 255, 136, 0.05)',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(0, 255, 136, 0.2)'
-                        }}>
-                            <div style={{
-                                color: '#00ff88',
-                                fontSize: '14px',
-                                fontWeight: 'bold',
-                                marginBottom: '12px'
-                            }}>📈 ANÁLISE DO SINAL</div>
-
-                            <div style={{
+                                paddingTop: '6px',
+                                marginTop: '6px',
                                 display: 'grid',
-                                gridTemplateColumns: '1fr 1fr',
-                                gap: '10px'
+                                gridTemplateColumns: '1fr 1fr 1fr',
+                                gap: '8px',
+                                fontSize: '10px'
                             }}>
-                                <div style={{
-                                    padding: '12px',
-                                    backgroundColor: 'rgba(255,255,255,0.05)',
-                                    borderRadius: '8px',
-                                    textAlign: 'center'
-                                }}>
-                                    <div style={{ color: '#888', fontSize: '11px', marginBottom: '5px' }}>Score de Confiança</div>
-                                    <div style={{
-                                        color: data.score >= 70 ? '#00ff88' : data.score >= 50 ? '#ffd700' : '#ff6b6b',
-                                        fontSize: '24px',
-                                        fontWeight: 'bold'
-                                    }}>
-                                        {data.score}%
-                                    </div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ color: '#888' }}>Risco</div>
+                                    <div style={{ color: '#ff6b6b', fontWeight: 'bold' }}>${data.riskAmount}</div>
                                 </div>
-                                {data.accuracy !== null && (
-                                    <div style={{
-                                        padding: '12px',
-                                        backgroundColor: 'rgba(255,255,255,0.05)',
-                                        borderRadius: '8px',
-                                        textAlign: 'center'
-                                    }}>
-                                        <div style={{ color: '#888', fontSize: '11px', marginBottom: '5px' }}>Precisão da Análise</div>
-                                        <div style={{
-                                            color: data.accuracy >= 70 ? '#00ff88' : data.accuracy >= 50 ? '#ffd700' : '#ff6b6b',
-                                            fontSize: '24px',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {data.accuracy}%
-                                        </div>
-                                    </div>
-                                )}
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ color: '#888' }}>Lucro</div>
+                                    <div style={{ color: '#00ff88', fontWeight: 'bold' }}>${data.potentialProfit}</div>
+                                </div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ color: '#888' }}>Duração</div>
+                                    <div style={{ color: '#fff', fontWeight: 'bold' }}>{data.duration}</div>
+                                </div>
                             </div>
                         </div>
 
@@ -5720,19 +5676,19 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                         <div style={{
                             display: 'grid',
                             gridTemplateColumns: '1fr 1fr 1fr',
-                            gap: '10px'
+                            gap: '8px'
                         }}>
                             <button
                                 onClick={handleExecute}
                                 style={{
-                                    padding: '14px',
+                                    padding: '10px',
                                     backgroundColor: '#00ff88',
                                     color: '#000',
                                     border: 'none',
-                                    borderRadius: '8px',
+                                    borderRadius: '6px',
                                     cursor: 'pointer',
                                     fontWeight: 'bold',
-                                    fontSize: '13px',
+                                    fontSize: '11px',
                                     transition: 'all 0.3s ease'
                                 }}
                                 onMouseOver={(e) => e.target.style.backgroundColor = '#00cc6a'}
@@ -5744,14 +5700,14 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             <button
                                 onClick={handleCopy}
                                 style={{
-                                    padding: '14px',
+                                    padding: '10px',
                                     backgroundColor: 'rgba(255,255,255,0.1)',
                                     color: '#fff',
                                     border: '1px solid rgba(255,255,255,0.2)',
-                                    borderRadius: '8px',
+                                    borderRadius: '6px',
                                     cursor: 'pointer',
                                     fontWeight: 'bold',
-                                    fontSize: '13px',
+                                    fontSize: '11px',
                                     transition: 'all 0.3s ease'
                                 }}
                                 onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.2)'}
@@ -5763,14 +5719,14 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             <button
                                 onClick={handleIgnore}
                                 style={{
-                                    padding: '14px',
+                                    padding: '10px',
                                     backgroundColor: 'rgba(255,107,107,0.2)',
                                     color: '#ff6b6b',
                                     border: '1px solid #ff6b6b',
-                                    borderRadius: '8px',
+                                    borderRadius: '6px',
                                     cursor: 'pointer',
                                     fontWeight: 'bold',
-                                    fontSize: '13px',
+                                    fontSize: '11px',
                                     transition: 'all 0.3s ease'
                                 }}
                                 onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255,107,107,0.3)'}
