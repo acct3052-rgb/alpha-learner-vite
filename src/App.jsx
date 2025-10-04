@@ -8,6 +8,9 @@ import { supabase } from './utils/supabase'
 import * as tf from '@tensorflow/tfjs'
 import TradingSystemApp from './TradingSystem'
 
+console.log('🔍 Debug - supabase client:', supabase)
+console.log('🔍 Debug - supabase.from existe?', typeof supabase?.from)
+
 // Expor dependências globalmente
 window.React = React
 window.supabase = supabase

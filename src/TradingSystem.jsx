@@ -8,8 +8,8 @@ import React from 'react'
 // Usar hooks do React
 const { useState, useEffect, useRef } = React
 
-// Supabase já configurado em App.jsx
-const supabase = window.supabase
+// Supabase será acessado via window.supabase (definido em App.jsx)
+// Não criar referência const aqui pois window.supabase ainda é undefined neste momento
 
 /* ========================================
    CLASSES E SERVIÇOS DO SISTEMA
@@ -74,7 +74,7 @@ const supabase = window.supabase
         this.isLoading = true;
         
         try {
-            const { data, error } = await supabase
+            const { data, error } = await window.supabase
                 .from('api_connections')
                 .select('*')
                 .eq('id', 1)
@@ -126,7 +126,7 @@ const supabase = window.supabase
         try {
             const connectionsObj = Object.fromEntries(this.connections);
             
-            const { error } = await supabase
+            const { error } = await window.supabase
                 .from('api_connections')
                 .upsert({
                     id: 1,
@@ -588,7 +588,7 @@ const supabase = window.supabase
                ======================================== */
             async saveExecutionToSupabase(execution) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await window.supabase
                         .from('futures_executions')
                         .insert([{
                             signal_id: execution.signalId,
@@ -630,7 +630,7 @@ const supabase = window.supabase
 
             async updateExecutionInSupabase(signalId, result, pnl, exitPrice = null) {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await window.supabase
                         .from('futures_executions')
                         .update({
                             result: result,
@@ -655,7 +655,7 @@ const supabase = window.supabase
 
             async loadExecutionsFromSupabase() {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await window.supabase
                         .from('futures_executions')
                         .select('*')
                         .order('created_at', { ascending: false })
@@ -678,7 +678,7 @@ const supabase = window.supabase
 
             async getExecutionStats() {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await window.supabase
                         .from('futures_execution_stats')
                         .select('*')
                         .single();
@@ -1477,7 +1477,7 @@ Duração: ${data.duration}
         
         try {
             // Carregar logs do Supabase
-            const { data: logs, error: logsError } = await supabase
+            const { data: logs, error: logsError } = await window.supabase
                 .from('audit_logs')
                 .select('*')
                 .order('generated_at', { ascending: false })
@@ -1503,7 +1503,7 @@ Duração: ${data.duration}
             }
 
             // Carregar estatísticas de performance
-            const { data: stats, error: statsError } = await supabase
+            const { data: stats, error: statsError } = await window.supabase
                 .from('performance_stats')
                 .select('*');
 
@@ -1552,7 +1552,7 @@ Duração: ${data.duration}
             const recentLogs = this.auditLogs.slice(-100); // Últimos 100 logs
             
             for (const log of recentLogs) {
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('audit_logs')
                     .upsert({
                         signal_id: log.signalId,
@@ -1620,7 +1620,7 @@ Duração: ${data.duration}
         });
 
         if (statsToSave.length > 0) {
-            const { error: statsError } = await supabase
+            const { error: statsError } = await window.supabase
                 .from('performance_stats')
                 .upsert(statsToSave, {
                     onConflict: 'stat_type,stat_key'
@@ -1968,7 +1968,7 @@ Duração: ${data.duration}
                 
                 try {
                     // Carregar sinais do Supabase
-                    const { data: signals, error: signalsError } = await supabase
+                    const { data: signals, error: signalsError } = await window.supabase
                         .from('signals')
                         .select('*')
                         .order('timestamp', { ascending: false })
@@ -2004,7 +2004,7 @@ Duração: ${data.duration}
                     }));
 
                     // Carregar pesos ML
-                    const { data: weights, error: weightsError } = await supabase
+                    const { data: weights, error: weightsError } = await window.supabase
                         .from('ml_weights_evolution')
                         .select('*')
                         .order('timestamp', { ascending: false })
@@ -2068,7 +2068,7 @@ Duração: ${data.duration}
                     }
 
                     // Salvar no Supabase
-                    const { error } = await supabase
+                    const { error } = await window.supabase
                         .from('signals')
                         .upsert({
                             id: signal.id,
@@ -2145,7 +2145,7 @@ Duração: ${data.duration}
 
             async saveWeightsSnapshot(weights, performance) {
                 try {
-                    const { error } = await supabase
+                    const { error } = await window.supabase
                         .from('ml_weights_evolution')
                         .insert({
                             weights: weights,
@@ -2177,7 +2177,7 @@ Duração: ${data.duration}
 
             async getStatistics() {
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await window.supabase
                         .from('signals')
                         .select('status, pnl');
 
