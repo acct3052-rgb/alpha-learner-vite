@@ -6103,28 +6103,42 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
             // NOVO: Atualizar métricas quando alphaEngine ou updateTrigger mudar
             useEffect(() => {
-                const updateMetrics = () => {
+                const updateMetrics = async () => {
                     try {
-                        if (!alphaEngine || !alphaEngine.performance) {
-                            setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
-                            return;
+                        // Priorizar dados do Supabase/MemoryDB (mais confiáveis)
+                        if (memoryDB) {
+                            const dbStats = await memoryDB.getStatistics();
+                            if (dbStats && dbStats.total > 0) {
+                                setMetrics({
+                                    winRate: dbStats.winRate || 0,
+                                    totalPnL: dbStats.totalPnL || 0,
+                                    totalSignals: dbStats.total || 0
+                                });
+                                return;
+                            }
                         }
-                        setMetrics({
-                            winRate: alphaEngine.performance.winRate || 0,
-                            totalPnL: alphaEngine.performance.totalPnL || 0,
-                            totalSignals: alphaEngine.performance.totalSignals || 0
-                        });
+
+                        // Fallback: usar alphaEngine.performance se MemoryDB não disponível
+                        if (alphaEngine && alphaEngine.performance) {
+                            setMetrics({
+                                winRate: alphaEngine.performance.winRate || 0,
+                                totalPnL: alphaEngine.performance.totalPnL || 0,
+                                totalSignals: alphaEngine.performance.totalSignals || 0
+                            });
+                        } else {
+                            setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
+                        }
                     } catch (error) {
                         console.error('Erro ao atualizar métricas:', error);
                     }
                 };
 
                 updateMetrics();
-                
+
                 // NOVO: Atualizar a cada 5 segundos
                 const interval = setInterval(updateMetrics, 5000);
                 return () => clearInterval(interval);
-            }, [alphaEngine, updateTrigger]);
+            }, [alphaEngine, updateTrigger, memoryDB]);
 
             return (
                 <div>
