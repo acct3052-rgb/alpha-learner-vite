@@ -2255,17 +2255,87 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 }
             }
 
-            // Buscar candle específico por timestamp
-            getCandleByTimestamp(timestamp) {
-                // Buscar em candles fechados
-                const closedCandle = this.prices.find(p => p.timestamp === timestamp);
-                if (closedCandle) return closedCandle;
+            // Busca proativa de candle específico via REST API
+            async fetchSpecificCandleFromREST(symbol, timestamp, interval = '5m') {
+                try {
+                    // Buscar alguns candles ao redor do timestamp alvo
+                    const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${timestamp - 600000}&endTime=${timestamp + 600000}&limit=20`;
+                    const response = await fetch(url);
+                    const data = await response.json();
 
-                // Se for o candle atual em formação
+                    const candles = data.map(k => ({
+                        timestamp: k[0],
+                        open: parseFloat(k[1]),
+                        high: parseFloat(k[2]),
+                        low: parseFloat(k[3]),
+                        close: parseFloat(k[4]),
+                        volume: parseFloat(k[5]),
+                        isClosed: true
+                    }));
+
+                    // Adicionar candles ao histórico se ainda não existirem
+                    candles.forEach(candle => {
+                        const existingIndex = this.prices.findIndex(p => p.timestamp === candle.timestamp);
+                        if (existingIndex === -1) {
+                            this.prices.push(candle);
+                            console.log(`➕ Candle adicionado ao cache: ${new Date(candle.timestamp).toLocaleTimeString('pt-BR')}`);
+                        }
+                    });
+
+                    // Ordenar por timestamp
+                    this.prices.sort((a, b) => a.timestamp - b.timestamp);
+
+                    // Manter apenas os últimos 200
+                    if (this.prices.length > 200) {
+                        this.prices = this.prices.slice(-200);
+                    }
+
+                    console.log(`✅ Busca proativa completada: ${candles.length} candles adicionados`);
+                    return candles;
+                } catch (error) {
+                    console.error('❌ Erro ao buscar candle específico:', error);
+                    return null;
+                }
+            }
+
+            // Buscar candle específico por timestamp
+            getCandleByTimestamp(timestamp, toleranceMs = 60000) {
+                // 1. Busca exata em candles fechados
+                const exactCandle = this.prices.find(p => p.timestamp === timestamp);
+                if (exactCandle) {
+                    console.log(`✅ Candle encontrado (busca exata): ${new Date(timestamp).toLocaleTimeString('pt-BR')}`);
+                    return exactCandle;
+                }
+
+                // 2. Se for o candle atual em formação
                 if (this.currentCandle && this.currentCandle.timestamp === timestamp) {
+                    console.log(`✅ Candle encontrado (atual em formação): ${new Date(timestamp).toLocaleTimeString('pt-BR')}`);
                     return this.currentCandle;
                 }
 
+                // 3. Busca com tolerância (pode ter pequenas diferenças de timestamp)
+                const candleInRange = this.prices.find(p => {
+                    const diff = Math.abs(p.timestamp - timestamp);
+                    return diff <= toleranceMs; // Aceitar até 1 minuto de diferença
+                });
+
+                if (candleInRange) {
+                    console.log(`✅ Candle encontrado (busca com tolerância): ${new Date(candleInRange.timestamp).toLocaleTimeString('pt-BR')} (diff: ${Math.abs(candleInRange.timestamp - timestamp)}ms)`);
+                    return candleInRange;
+                }
+
+                // 4. Buscar candle mais próximo ANTES do timestamp (último candle disponível)
+                const candlesBefore = this.prices.filter(p => p.timestamp <= timestamp);
+                if (candlesBefore.length > 0) {
+                    const closest = candlesBefore[candlesBefore.length - 1];
+                    const diff = timestamp - closest.timestamp;
+                    if (diff <= toleranceMs * 2) { // Até 2 minutos de diferença
+                        console.log(`⚠️ Usando candle mais próximo: ${new Date(closest.timestamp).toLocaleTimeString('pt-BR')} (diff: ${diff}ms)`);
+                        return closest;
+                    }
+                }
+
+                console.warn(`❌ Nenhum candle encontrado para timestamp: ${new Date(timestamp).toLocaleTimeString('pt-BR')}`);
                 return null;
             }
 
@@ -3445,21 +3515,48 @@ calculateVolumeScore(volume) {
 }
             async learnFromTrade(signal, result) {
                 const successful = result === 'ACERTO';
-                const learningRate = 0.1;
+                const isExpired = result === 'EXPIRADO';
+
+                // Taxa de aprendizado ajustável
+                let learningRate = 0.1;
+
+                // Para sinais expirados, usar taxa menor (sinal inconclusivo, não erro)
+                if (isExpired) {
+                    learningRate = 0.03; // Penalidade leve - pode ser timing, não qualidade
+                    console.log(`📚 [ML] Aprendendo com sinal expirado (penalidade leve)`);
+                }
+
                 const multiplier = signal.divergence ? 2 : 1;
-                
+
                 signal.contributors.forEach(indicator => {
                     if (successful) {
+                        // Reforçar indicadores que contribuíram para acerto
                         this.weights[indicator] = Math.min(1, this.weights[indicator] + learningRate * multiplier);
+                    } else if (isExpired) {
+                        // Penalidade leve para expirados (pode ser timing, não qualidade do sinal)
+                        this.weights[indicator] = Math.max(0.05, this.weights[indicator] - learningRate * 0.5);
                     } else {
+                        // Penalidade maior para erros confirmados
                         this.weights[indicator] = Math.max(0, this.weights[indicator] - learningRate * multiplier);
                     }
                 });
 
+                // Normalizar pesos
                 const totalWeight = Object.values(this.weights).reduce((a, b) => a + b, 0);
-                Object.keys(this.weights).forEach(key => {
-                    this.weights[key] /= totalWeight;
-                });
+                if (totalWeight > 0) {
+                    Object.keys(this.weights).forEach(key => {
+                        this.weights[key] /= totalWeight;
+                    });
+                }
+
+                // Log dos pesos atualizados
+                console.log(`📊 [ML] Pesos atualizados após ${result}:`,
+                    Object.entries(this.weights)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5)
+                        .map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`)
+                        .join(', ')
+                );
 
                 this.performance.totalSignals++;
                 if (successful) this.performance.successfulSignals++;
@@ -4859,6 +4956,27 @@ useEffect(() => {
                     console.log(`   🎯 Candle Entrada: ${new Date(entryTimestamp).toLocaleTimeString('pt-BR')}`);
                     console.log(`   🎯 Candle Expiração: ${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')}`);
 
+                    // 🔄 PRÉ-CARREGAMENTO PROATIVO: Buscar candles necessários logo após sinal gerado
+                    const preloadCandles = async () => {
+                        if (marketDataRef.current?.fetchSpecificCandleFromREST) {
+                            console.log(`🔍 [PRE-LOAD] Iniciando pré-carregamento de candles para o sinal...`);
+                            try {
+                                // Buscar candles ao redor do timestamp de expiração
+                                await marketDataRef.current.fetchSpecificCandleFromREST(
+                                    signal.symbol.replace('USDT', ''),
+                                    expirationTimestamp,
+                                    '5m'
+                                );
+                                console.log(`✅ [PRE-LOAD] Candles pré-carregados com sucesso`);
+                            } catch (error) {
+                                console.error('❌ [PRE-LOAD] Erro ao pré-carregar candles:', error);
+                            }
+                        }
+                    };
+
+                    // Executar pré-carregamento após 30 segundos do sinal gerado
+                    setTimeout(preloadCandles, 30000);
+
                     // Armazenar dados do sinal para validação precisa
                     let entryCandleData = null;
 
@@ -4891,17 +5009,40 @@ useEffect(() => {
                         showNotification(`✅ Entrada: ${signal.direction} @ ${entryCandleData.open.toFixed(6)}`);
                     }, timeUntilEntry);
 
-                    // Validar APENAS no horário de expiração (não monitora continuamente)
+                    // Validar APÓS o horário de expiração + buffer para garantir que candle foi fechado e está disponível
+                    // Adicionar 15 segundos de buffer para dar tempo do candle ser processado e armazenado
+                    const bufferTime = 15000; // 15 segundos
                     const verificationTimerId = setTimeout(async () => {
                         clearTimeout(entryTimer);
+                        console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
 
-                        // Função para tentar obter o candle com retry
+                        // Função para tentar obter o candle com retry e busca proativa
                         const getExpirationCandleWithRetry = async (maxRetries = 3, delayMs = 2000) => {
                             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                 const candle = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
                                 if (candle) {
                                     console.log(`✅ [BINARY] Candle de expiração obtido (tentativa ${attempt}/${maxRetries})`);
                                     return candle;
+                                }
+
+                                // Na segunda tentativa, fazer busca proativa via REST API
+                                if (attempt === 2 && marketDataRef.current?.fetchSpecificCandleFromREST) {
+                                    console.log(`🔍 [BINARY] Tentando busca proativa via REST API...`);
+                                    try {
+                                        await marketDataRef.current.fetchSpecificCandleFromREST(
+                                            signal.symbol.replace('USDT', ''),
+                                            expirationTimestamp,
+                                            '5m'
+                                        );
+                                        // Tentar buscar novamente após carregar dados
+                                        const candleAfterFetch = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
+                                        if (candleAfterFetch) {
+                                            console.log(`✅ [BINARY] Candle encontrado após busca proativa!`);
+                                            return candleAfterFetch;
+                                        }
+                                    } catch (error) {
+                                        console.error('❌ [BINARY] Erro na busca proativa:', error);
+                                    }
                                 }
 
                                 if (attempt < maxRetries) {
@@ -5033,7 +5174,7 @@ useEffect(() => {
                         if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
                             window.telegramNotifier.notifyResult(signal, result, pnl);
                         }
-                    }, timeUntilExpiration);
+                    }, timeUntilExpiration + bufferTime); // Aguardar expiração + buffer de 15s
 
                     verificationTimers.current.set(signal.id, {
                         timer: verificationTimerId,
