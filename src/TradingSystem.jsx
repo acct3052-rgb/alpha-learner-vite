@@ -5139,14 +5139,19 @@ useEffect(() => {
                                         wsTimestamp: currentPrice.timestamp // Timestamp do WebSocket
                                     };
 
-                                    // 🔍 DETECTAR PREÇO TRAVADO
+                                    // 🔍 DETECTAR PREÇO TRAVADO (comparar apenas preço, não timestamp do candle)
                                     const lastSnapshot = type === 'entry'
                                         ? preCapturedPrices.entry[preCapturedPrices.entry.length - 1]
                                         : preCapturedPrices.expiration[preCapturedPrices.expiration.length - 1];
 
-                                    if (lastSnapshot && lastSnapshot.price === snapshot.price && lastSnapshot.candleTimestamp === snapshot.candleTimestamp) {
+                                    if (lastSnapshot && lastSnapshot.price === snapshot.price) {
                                         if (captureCount % 3 === 0) {
-                                            console.warn(`⚠️ [${type.toUpperCase()}] Preço TRAVADO em $${snapshot.price.toFixed(2)} (WebSocket pode estar lento)`);
+                                            console.warn(`⚠️ [${type.toUpperCase()}] Preço TRAVADO em $${snapshot.price.toFixed(2)} por ${captureCount * 3}s (WebSocket pode estar lento)`);
+                                        }
+                                    } else if (lastSnapshot) {
+                                        // Preço mudou - log apenas de vez em quando para não poluir
+                                        if (captureCount % 3 === 0) {
+                                            console.log(`✅ [${type.toUpperCase()}] Preço atualizado: $${lastSnapshot.price.toFixed(2)} → $${snapshot.price.toFixed(2)}`);
                                         }
                                     }
 
