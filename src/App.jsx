@@ -7,6 +7,7 @@ import React from 'react'
 import { supabase } from './utils/supabase'
 import * as tf from '@tensorflow/tfjs'
 import TradingSystemApp from './TradingSystem'
+import { clearAllData } from './utils/clearData'
 
 console.log('🔍 Debug - supabase client:', supabase)
 console.log('🔍 Debug - supabase.from existe?', typeof supabase?.from)
@@ -15,6 +16,7 @@ console.log('🔍 Debug - supabase.from existe?', typeof supabase?.from)
 window.React = React
 window.supabase = supabase
 window.tf = tf
+window.clearAllData = clearAllData
 
 // Configuração de auditoria global
 window.auditSystemRef = null
