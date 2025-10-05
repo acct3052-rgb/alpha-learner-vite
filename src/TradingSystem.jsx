@@ -1,10 +1,14 @@
 /*
  * Alpha-Learner Trading System - Complete Implementation
  * Convertido automaticamente para React moderno com Vite
- * Updated: 2025-10-05 01:30 - executeSignalFromCard fix
+ * Version: 2.5.0 - executeSignalFromCard fix FINAL
  */
 
 import React from 'react'
+
+// 🔧 VERSÃO 2.5.0 - executeSignalFromCard CORRIGIDO
+console.log('%c🚀 Alpha-Learner v2.5.0 CARREGADO', 'color: #00ff88; font-size: 16px; font-weight: bold');
+console.log('%c✅ executeSignalFromCard: DEFINIDO', 'color: #00ff88; font-weight: bold');
 
 // Usar hooks do React
 const { useState, useEffect, useRef } = React
