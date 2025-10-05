@@ -5399,6 +5399,12 @@ useEffect(() => {
                                 : `❌ Opção binária: ${formatBRL(pnl)}`
                         );
 
+                        // 🧹 AUTO-CLEANUP: Remover sinal confirmado após 5 segundos
+                        setTimeout(() => {
+                            console.log(`🧹 Auto-removendo sinal confirmado: ${signal.id}`);
+                            dismissSignal(signal.id);
+                        }, 5000);
+
                         if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
                             window.telegramNotifier.notifyResult(signal, result, pnl);
                         }
@@ -5538,14 +5544,11 @@ useEffect(() => {
                     }
                     verificationTimers.current.delete(signal.id);
 
-                    // 🧹 LIMPEZA: Remover sinais finalizados após 5 minutos para evitar acúmulo
+                    // 🧹 AUTO-CLEANUP: Remover sinais finalizados após 5 segundos
                     setTimeout(() => {
-                        setSignals(prev => {
-                            const filtered = prev.filter(s => s.id !== signal.id);
-                            console.log(`🧹 Sinal ${signal.id} removido do estado (${filtered.length} sinais restantes)`);
-                            return filtered;
-                        });
-                    }, 5 * 60 * 1000); // 5 minutos
+                        console.log(`🧹 Auto-removendo sinal finalizado: ${signal.id}`);
+                        dismissSignal(signal.id);
+                    }, 5000); // 5 segundos
                 } catch (error) {
                     console.log('Erro na verificação:', error);
                 }
