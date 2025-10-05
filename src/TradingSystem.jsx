@@ -5074,6 +5074,15 @@ useEffect(() => {
                         expiration: []  // Snapshots do candle de expiração
                     };
 
+                    // 🔧 CRIAR TIMER REGISTRY ANTES de iniciar capturas (para que intervals possam se registrar)
+                    verificationTimers.current.set(signal.id, {
+                        timer: null,  // Será definido depois
+                        entryTimer: null,  // Será definido depois
+                        safetyTimeout: null,  // Será definido depois
+                        intervals: [],
+                        monitoringTimers: []
+                    });
+
                     // Função para monitorar e capturar preços antes do fechamento do candle
                     const startPreCaptureMonitoring = (targetTimestamp, type = 'entry') => {
                         // Calcular quando iniciar monitoramento (30s antes do fechamento do candle)
@@ -5091,9 +5100,12 @@ useEffect(() => {
                             console.log(`🎬 [PRE-CAPTURE] Iniciando captura preventiva (${type})`);
 
                             let captureCount = 0;
+                            let successfulCaptures = 0;
                             const maxCaptures = 30; // 30 capturas em 30 segundos = 1 por segundo
 
                             const captureInterval = setInterval(() => {
+                                captureCount++; // ✅ SEMPRE incrementar para evitar loop infinito
+
                                 const currentPrice = marketDataRef.current?.getLatestPrice();
 
                                 if (currentPrice && currentPrice.close) {
@@ -5112,16 +5124,22 @@ useEffect(() => {
                                         preCapturedPrices.expiration.push(snapshot);
                                     }
 
-                                    captureCount++;
+                                    successfulCaptures++;
 
-                                    if (captureCount === 1 || captureCount % 5 === 0 || captureCount === maxCaptures) {
-                                        console.log(`📸 [${type.toUpperCase()}] Snapshot ${captureCount}/${maxCaptures}: $${snapshot.price.toFixed(2)}`);
+                                    if (successfulCaptures === 1 || successfulCaptures % 5 === 0 || captureCount === maxCaptures) {
+                                        console.log(`📸 [${type.toUpperCase()}] Snapshot ${successfulCaptures}/${captureCount}: $${snapshot.price.toFixed(2)}`);
                                     }
+                                } else if (captureCount % 5 === 0) {
+                                    console.warn(`⚠️ [${type.toUpperCase()}] Preço não disponível (tentativa ${captureCount}/${maxCaptures})`);
                                 }
 
+                                // Parar após maxCaptures tentativas (não capturas bem-sucedidas)
                                 if (captureCount >= maxCaptures) {
                                     clearInterval(captureInterval);
-                                    console.log(`✅ [PRE-CAPTURE] ${type} completada: ${captureCount} snapshots capturados`);
+                                    console.log(`✅ [PRE-CAPTURE] ${type} completada: ${successfulCaptures}/${captureCount} snapshots capturados`);
+                                    if (successfulCaptures === 0) {
+                                        console.error(`❌ [${type.toUpperCase()}] CRÍTICO: Nenhum snapshot capturado! marketData pode estar offline`);
+                                    }
                                 }
                             }, 1000); // Capturar a cada 1 segundo
 
@@ -5280,13 +5298,17 @@ useEffect(() => {
                         }
 
                         if (!expirationCandle) {
-                            console.warn('⚠️ [BINARY] Candle de expiração não disponível e sem snapshots capturados');
+                            console.error('❌ [BINARY] FALHA: Candle de expiração não disponível');
+                            console.error(`   Snapshots disponíveis: ${preCapturedPrices.expiration.length}`);
+                            console.error(`   Timestamp esperado: ${new Date(expirationTimestamp).toLocaleString('pt-BR')}`);
                             verifySignalOutcome(signal, 'EXPIRADO', 0, null);
                             return;
                         }
 
                         if (!entryCandleData) {
-                            console.warn('⚠️ [BINARY] Dados de entrada não capturados');
+                            console.error('❌ [BINARY] FALHA: Dados de entrada não capturados');
+                            console.error(`   Snapshots disponíveis: ${preCapturedPrices.entry.length}`);
+                            console.error(`   Timestamp esperado: ${new Date(entryTimestamp).toLocaleString('pt-BR')}`);
                             verifySignalOutcome(signal, 'EXPIRADO', 0, null);
                             return;
                         }
@@ -5425,11 +5447,13 @@ useEffect(() => {
                         }
                     }, timeUntilExpiration + bufferTime + maxWaitTime);
 
-                    verificationTimers.current.set(signal.id, {
-                        timer: verificationTimerId,
-                        entryTimer: entryTimer,
-                        safetyTimeout: safetyTimeout
-                    });
+                    // 🔧 ATUALIZAR timer registry (já foi criado antes para permitir registro de intervals)
+                    const timerData = verificationTimers.current.get(signal.id);
+                    if (timerData) {
+                        timerData.timer = verificationTimerId;
+                        timerData.entryTimer = entryTimer;
+                        timerData.safetyTimeout = safetyTimeout;
+                    }
                 } catch (error) {
                     console.error('Erro ao agendar verificação:', error);
                 }
