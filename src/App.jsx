@@ -99,6 +99,16 @@ window.clearAllData = async function(options = {}) {
 
             results.supabase.success = true;
             console.log(`✅ Supabase limpo! Total: ${totalDeleted} registros`);
+
+            // Limpar memória do AuditSystem se existir
+            if (window.auditSystemRef) {
+                window.auditSystemRef.auditLogs = [];
+                window.auditSystemRef.performanceByHour = {};
+                window.auditSystemRef.performanceByScore = {};
+                window.auditSystemRef.indicatorPerformance = {};
+                window.auditSystemRef.notifyChange();
+                console.log('✅ Memória do AuditSystem limpa');
+            }
         } catch (error) {
             console.error('❌ Erro ao limpar Supabase:', error);
             results.supabase.error = error.message;
