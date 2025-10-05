@@ -5117,7 +5117,9 @@ useEffect(() => {
                     const bufferTime = 5000; // 5 segundos após fechamento do candle
                     const verificationTimerId = setTimeout(async () => {
                         try {
-                            console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
+                            console.log(`⏰ [BINARY] Iniciando verificação sinal ${signal.id.toString().slice(0, 8)}...`);
+                            console.log(`   Buffer: ${bufferTime/1000}s após expiração`);
+                            console.log(`   ExpirationTimestamp: ${new Date(expirationTimestamp).toLocaleString('pt-BR')}`);
 
                         // ⚡ OTIMIZADO: Mais tentativas, delays menores (ML precisa de velocidade e confiabilidade)
                         const getExpirationCandleWithRetry = async (maxRetries = 3, delayMs = 500) => {
@@ -5243,7 +5245,7 @@ useEffect(() => {
                                 window.auditSystemRef.updateSignalOutcome(
                                     signal.id,
                                     result,
-                                    closingPrice,
+                                    expirationClose,
                                     pnl,
                                     signal.executionDetails
                                 );
@@ -5256,8 +5258,32 @@ useEffect(() => {
                             orderExecutorRef.current.closePosition(signal.id, result, pnl);
                         }
 
-                        // Atualizar ML
+                        // Atualizar ML com dados completos do candle de expiração
                         if (alphaEngine && result !== 'EXPIRADO') {
+                            // Adicionar dados do candle de expiração ao sinal para ML aprender
+                            signal.expirationCandle = {
+                                timestamp: expirationCandle.timestamp,
+                                open: expirationOpen,
+                                close: expirationClose,
+                                high: expirationCandle.high,
+                                low: expirationCandle.low,
+                                color: candleColor,
+                                isGreen: isCandleGreen,
+                                isRed: isCandleRed,
+                                bodySize: Math.abs(expirationClose - expirationOpen),
+                                variation: expirationClose - expirationOpen
+                            };
+
+                            // Adicionar dados do candle de entrada também
+                            if (entryCandleData) {
+                                signal.entryCandle = {
+                                    timestamp: entryCandleData.timestamp,
+                                    open: entryCandleData.open,
+                                    close: entryCandleData.close,
+                                    source: entryCandleData.source
+                                };
+                            }
+
                             alphaEngine.learnFromTrade(signal, result);
                         }
 
@@ -5288,10 +5314,21 @@ useEffect(() => {
                         }
                         } catch (error) {
                             console.error('❌ [BINARY] Erro na verificação do sinal:', error);
+                            console.error('Stack trace:', error.stack);
+                            console.error('Sinal ID:', signal.id);
+                            console.error('ExpirationTimestamp:', expirationTimestamp);
+
+                            // Limpar timer mesmo com erro
+                            verificationTimers.current.delete(signal.id);
+
                             // Marcar como EXPIRADO em caso de erro
-                            verifySignalOutcome(signal, 'EXPIRADO', 0, null);
+                            try {
+                                verifySignalOutcome(signal, 'EXPIRADO', 0, null);
+                            } catch (innerError) {
+                                console.error('❌ Erro ao marcar sinal como expirado:', innerError);
+                            }
                         }
-                    }, timeUntilExpiration + bufferTime); // Aguardar expiração + buffer de 15s
+                    }, timeUntilExpiration + bufferTime); // Aguardar expiração + buffer de 5s
 
                     // Timeout de segurança: Garantir que o sinal será marcado como EXPIRADO após 10 minutos
                     const maxWaitTime = 10 * 60 * 1000; // 10 minutos
