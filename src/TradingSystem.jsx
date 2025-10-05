@@ -5194,15 +5194,15 @@ useEffect(() => {
                     }, timeUntilEntry);
 
                     // Validar APÓS o horário de expiração + buffer para garantir que candle foi fechado e está disponível
-                    // Adicionar 15 segundos de buffer para dar tempo do candle ser processado e armazenado
-                    const bufferTime = 15000; // 15 segundos
+                    // ⚡ OTIMIZADO: Reduzido para 3s (ML precisa de confirmações rápidas)
+                    const bufferTime = 3000; // 3 segundos (era 15s - muito lento!)
                     const verificationTimerId = setTimeout(async () => {
                         try {
                             clearTimeout(entryTimer);
                             console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
 
-                        // Função para tentar obter o candle com retry e busca proativa
-                        const getExpirationCandleWithRetry = async (maxRetries = 3, delayMs = 2000) => {
+                        // ⚡ OTIMIZADO: Menos tentativas, delays menores (ML precisa de velocidade)
+                        const getExpirationCandleWithRetry = async (maxRetries = 2, delayMs = 1000) => {
                             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                 const candle = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
                                 if (candle) {
@@ -5238,10 +5238,28 @@ useEffect(() => {
                             return null;
                         };
 
-                        // MÉTODO APRIMORADO: Buscar candle exato de expiração por timestamp com retry
-                        let expirationCandle = await getExpirationCandleWithRetry();
+                        // ⚡ OTIMIZAÇÃO ML: Se temos snapshots, usar IMEDIATAMENTE (sem esperar retries)
+                        let expirationCandle = null;
 
-                        // 🔄 FALLBACK INTELIGENTE: Usar snapshots pré-capturados se candle não disponível
+                        if (preCapturedPrices.expiration.length > 0) {
+                            // Usar snapshot pré-capturado PRIMEIRO (mais rápido!)
+                            const lastSnapshot = preCapturedPrices.expiration[preCapturedPrices.expiration.length - 1];
+                            expirationCandle = {
+                                timestamp: expirationTimestamp,
+                                open: lastSnapshot.open || lastSnapshot.price,
+                                high: lastSnapshot.high || lastSnapshot.price,
+                                low: lastSnapshot.low || lastSnapshot.price,
+                                close: lastSnapshot.price,
+                                isClosed: true,
+                                source: 'pre-captured'
+                            };
+                            console.log(`⚡ [FAST] Usando snapshot pré-capturado (${preCapturedPrices.expiration.length} disponíveis)`);
+                        } else {
+                            // Fallback: Buscar candle com retry
+                            expirationCandle = await getExpirationCandleWithRetry();
+                        }
+
+                        // 🔄 FALLBACK FINAL: Se ainda não tem, tentar snapshots novamente
                         if (!expirationCandle && preCapturedPrices.expiration.length > 0) {
                             const lastSnapshot = preCapturedPrices.expiration[preCapturedPrices.expiration.length - 1];
 
