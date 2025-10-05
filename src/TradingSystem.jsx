@@ -4637,29 +4637,12 @@ useEffect(() => {
                 console.log('💓 Heartbeat - Sistema ativo');
             }, 60000); // A cada 1 minuto
 
-            // 🧹 LIMPEZA AUTOMÁTICA - Remove sinais finalizados a cada 10 minutos
-            setInterval(() => {
-                try {
-                    const now = new Date();
-                    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
-
-                    // Limpar timers de sinais antigos que não existem mais
-                    const activeSignalIds = new Set(signals.map(s => s.id));
-                    verificationTimers.current.forEach((timerData, signalId) => {
-                        if (!activeSignalIds.has(signalId)) {
-                            console.log(`🧹 Limpando timer órfão: ${signalId}`);
-                            if (timerData.timer) clearTimeout(timerData.timer);
-                            if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
-                            if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
-                            verificationTimers.current.delete(signalId);
-                        }
-                    });
-
-                    console.log(`🧹 Limpeza automática executada - ${verificationTimers.current.size} timers ativos`);
-                } catch (error) {
-                    console.error('❌ Erro na limpeza automática:', error);
-                }
-            }, 10 * 60 * 1000); // A cada 10 minutos
+            // 🧹 LIMPEZA AUTOMÁTICA - Comentada pois estava removendo timers válidos
+            // Timers são limpos automaticamente quando:
+            // 1. Sinal é confirmado (sucesso ou erro)
+            // 2. Sinal expira (timeout de segurança)
+            // 3. Componente é desmontado (useEffect cleanup)
+            // Não precisamos de limpeza manual de "órfãos"
 
             // 🔄 AUTO-RECOVERY - Tenta reconectar APIs se houver falha
             setInterval(async () => {
