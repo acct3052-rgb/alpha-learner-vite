@@ -5349,56 +5349,61 @@ useEffect(() => {
                             return;
                         }
 
-                        // LÓGICA PRECISA DE OPÇÕES BINÁRIAS:
-                        // Comparar CLOSE do candle de expiração com OPEN do candle de entrada
-                        const entryPrice = entryCandleData.open;
-                        const closingPrice = expirationCandle.close;
+                        // LÓGICA DE OPÇÕES BINÁRIAS POR COR DO CANDLE:
+                        // Verificar se o candle de expiração é verde (alta) ou vermelho (baixa)
+                        const expirationOpen = expirationCandle.open;
+                        const expirationClose = expirationCandle.close;
+                        const isCandleGreen = expirationClose > expirationOpen; // Verde = compra
+                        const isCandleRed = expirationClose < expirationOpen;   // Vermelho = venda
+                        const candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
 
                         // Log da fonte dos dados
                         console.log(`📊 [BINARY] Fonte dos dados:`);
                         console.log(`   Entrada: ${entryCandleData.source || 'candle'}`);
                         console.log(`   Expiração: ${expirationCandle.source || 'candle'}`);
 
-                        console.log(`🔍 [BINARY] Validação Precisa:`);
+                        console.log(`🔍 [BINARY] Validação por Cor do Candle:`);
                         console.log(`   📥 Entrada - Candle ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`      Open: ${entryPrice.toFixed(6)} ← usado para comparação`);
+                        console.log(`      Open: ${entryCandleData.open.toFixed(6)}`);
                         console.log(`   📤 Expiração - Candle ${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`      Close: ${closingPrice.toFixed(6)} ← usado para comparação`);
+                        console.log(`      Open: ${expirationOpen.toFixed(6)}`);
+                        console.log(`      Close: ${expirationClose.toFixed(6)}`);
+                        console.log(`      Cor: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
 
                         let result = null;
                         let pnl = 0;
 
                         if (signal.direction === 'BUY') {
-                            // CALL: fechamento precisa ser MAIOR que entrada
-                            console.log(`   🔍 [BUY/CALL] ${closingPrice.toFixed(6)} > ${entryPrice.toFixed(6)} ?`);
-                            if (closingPrice > entryPrice) {
+                            // CALL: candle precisa ser VERDE (close > open)
+                            console.log(`   🔍 [BUY/CALL] Esperado: VERDE | Resultado: ${candleColor}`);
+                            if (isCandleGreen) {
                                 result = 'ACERTO';
                                 pnl = riskAmount * 0.85; // Payout típico 85%
-                                console.log(`   ✅ SIM! ACERTO (+${pnl.toFixed(2)})`);
+                                console.log(`   ✅ ACERTO! Candle verde (+${pnl.toFixed(2)})`);
                             } else {
                                 result = 'ERRO';
                                 pnl = -riskAmount;
-                                console.log(`   ❌ NÃO! ERRO (${pnl.toFixed(2)})`);
+                                console.log(`   ❌ ERRO! Candle ${candleColor.toLowerCase()} (${pnl.toFixed(2)})`);
                             }
                         } else {
-                            // PUT: fechamento precisa ser MENOR que entrada
-                            console.log(`   🔍 [SELL/PUT] ${closingPrice.toFixed(6)} < ${entryPrice.toFixed(6)} ?`);
-                            if (closingPrice < entryPrice) {
+                            // PUT: candle precisa ser VERMELHO (close < open)
+                            console.log(`   🔍 [SELL/PUT] Esperado: VERMELHO | Resultado: ${candleColor}`);
+                            if (isCandleRed) {
                                 result = 'ACERTO';
                                 pnl = riskAmount * 0.85; // Payout típico 85%
-                                console.log(`   ✅ SIM! ACERTO (+${pnl.toFixed(2)})`);
+                                console.log(`   ✅ ACERTO! Candle vermelho (+${pnl.toFixed(2)})`);
                             } else {
                                 result = 'ERRO';
                                 pnl = -riskAmount;
-                                console.log(`   ❌ NÃO! ERRO (${pnl.toFixed(2)})`);
+                                console.log(`   ❌ ERRO! Candle ${candleColor.toLowerCase()} (${pnl.toFixed(2)})`);
                             }
                         }
 
                         console.log(`🏁 [BINARY] Resultado Final: ${result}`);
                         console.log(`   Direção: ${signal.direction}`);
-                        console.log(`   Preço ENTRADA (início candle): ${entryPrice.toFixed(6)}`);
-                        console.log(`   Preço FECHAMENTO (fim candle): ${closingPrice.toFixed(6)}`);
-                        console.log(`   Diferença: ${(closingPrice - entryPrice).toFixed(6)}`);
+                        console.log(`   Candle Expiração: Open ${expirationOpen.toFixed(6)} → Close ${expirationClose.toFixed(6)}`);
+                        console.log(`   Cor do Candle: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`   Variação: ${(expirationClose - expirationOpen).toFixed(6)}`);
                         console.log(`   P&L: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`);
 
                         verificationTimers.current.delete(signal.id);
@@ -5406,7 +5411,7 @@ useEffect(() => {
                         // Atualizar estado dos sinais
                         signal.status = result;
                         signal.pnl = pnl;
-                        signal.finalPrice = closingPrice;
+                        signal.finalPrice = expirationClose;
 
                         // 💾 PERSISTIR NO SUPABASE IMEDIATAMENTE
                         if (window.memoryDB) {
@@ -5445,7 +5450,7 @@ useEffect(() => {
                         setSignals(prevSignals =>
                             prevSignals.map(s =>
                                 s.id === signal.id
-                                    ? { ...s, status: result, pnl, finalPrice: closingPrice }
+                                    ? { ...s, status: result, pnl, finalPrice: expirationClose }
                                     : s
                             )
                         );
