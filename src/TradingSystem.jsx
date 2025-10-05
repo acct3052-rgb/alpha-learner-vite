@@ -5121,7 +5121,7 @@ useEffect(() => {
 
                             let captureCount = 0;
                             let successfulCaptures = 0;
-                            const maxCaptures = 30; // 30 capturas em 30 segundos = 1 por segundo
+                            const maxCaptures = 10; // 10 capturas × 3s = 30 segundos de monitoramento
 
                             const captureInterval = setInterval(() => {
                                 captureCount++; // ✅ SEMPRE incrementar para evitar loop infinito
@@ -5248,7 +5248,6 @@ useEffect(() => {
                     const bufferTime = 3000; // 3 segundos (era 15s - muito lento!)
                     const verificationTimerId = setTimeout(async () => {
                         try {
-                            clearTimeout(entryTimer);
                             console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
 
                         // ⚡ OTIMIZADO: Mais tentativas, delays menores (ML precisa de velocidade e confiabilidade)
