@@ -5160,8 +5160,14 @@ useEffect(() => {
                         // Verificar se o candle de expiração é verde (alta) ou vermelho (baixa)
                         const expirationOpen = expirationCandle.open;
                         const expirationClose = expirationCandle.close;
-                        const isCandleGreen = expirationClose > expirationOpen; // Verde = compra
-                        const isCandleRed = expirationClose < expirationOpen;   // Vermelho = venda
+                        const variation = expirationClose - expirationOpen;
+
+                        // Definir margem mínima para evitar falsos DOJIs (0.01% do preço)
+                        const minVariation = expirationOpen * 0.0001; // 0.01% do preço
+
+                        const isCandleGreen = variation > minVariation;  // Verde = subiu mais que margem
+                        const isCandleRed = variation < -minVariation;   // Vermelho = caiu mais que margem
+                        const isDoji = Math.abs(variation) <= minVariation; // DOJI = variação muito pequena
                         const candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
 
                         console.log(`🔍 [BINARY] Validação por Cor do Candle:`);
@@ -5173,7 +5179,13 @@ useEffect(() => {
                         let result = null;
                         let pnl = 0;
 
-                        if (signal.direction === 'BUY') {
+                        // Tratar DOJI como EMPATE (nem ganho nem perda)
+                        if (isDoji) {
+                            result = 'EMPATE';
+                            pnl = 0;
+                            console.log(`   ⚖️ EMPATE! Candle DOJI - variação insignificante (${Math.abs(variation).toFixed(8)})`);
+                            console.log(`   📏 Margem mínima: ${minVariation.toFixed(8)} | Variação real: ${Math.abs(variation).toFixed(8)}`);
+                        } else if (signal.direction === 'BUY') {
                             // CALL: candle precisa ser VERDE (close > open)
                             console.log(`   🔍 [BUY/CALL] Esperado: VERDE | Resultado: ${candleColor}`);
                             if (isCandleGreen) {
@@ -5183,7 +5195,7 @@ useEffect(() => {
                             } else {
                                 result = 'ERRO';
                                 pnl = -riskAmount;
-                                console.log(`   ❌ ERRO! Candle ${candleColor.toLowerCase()} (${pnl.toFixed(2)})`);
+                                console.log(`   ❌ ERRO! Candle vermelho (${pnl.toFixed(2)})`);
                             }
                         } else {
                             // PUT: candle precisa ser VERMELHO (close < open)
@@ -5195,7 +5207,7 @@ useEffect(() => {
                             } else {
                                 result = 'ERRO';
                                 pnl = -riskAmount;
-                                console.log(`   ❌ ERRO! Candle ${candleColor.toLowerCase()} (${pnl.toFixed(2)})`);
+                                console.log(`   ❌ ERRO! Candle verde (${pnl.toFixed(2)})`);
                             }
                         }
 
@@ -5242,7 +5254,7 @@ useEffect(() => {
                         }
 
                         // Atualizar ML com dados completos do candle de expiração
-                        if (alphaEngine && result !== 'EXPIRADO') {
+                        if (alphaEngine && result !== 'EXPIRADO' && result !== 'EMPATE') {
                             // Adicionar dados do candle de expiração ao sinal para ML aprender
                             signal.expirationCandle = {
                                 timestamp: expirationCandle.timestamp,
@@ -5283,6 +5295,8 @@ useEffect(() => {
                         showNotification(
                             result === 'ACERTO'
                                 ? `✅ Opção binária: +${formatBRL(pnl)}`
+                                : result === 'EMPATE'
+                                ? `⚖️ Empate: Candle DOJI (${formatBRL(pnl)})`
                                 : `❌ Opção binária: ${formatBRL(pnl)}`
                         );
 
