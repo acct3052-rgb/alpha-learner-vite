@@ -4651,13 +4651,6 @@ useEffect(() => {
                             if (timerData.timer) clearTimeout(timerData.timer);
                             if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
                             if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
-                            if (timerData.interval) clearInterval(timerData.interval);
-                            if (timerData.intervals) {
-                                timerData.intervals.forEach(interval => clearInterval(interval));
-                            }
-                            if (timerData.monitoringTimers) {
-                                timerData.monitoringTimers.forEach(timer => clearTimeout(timer));
-                            }
                             verificationTimers.current.delete(signalId);
                         }
                     });
@@ -4716,13 +4709,6 @@ useEffect(() => {
                         if (timerData.timer) clearTimeout(timerData.timer);
                         if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
                         if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
-                        if (timerData.interval) clearInterval(timerData.interval);
-                        if (timerData.intervals) {
-                            timerData.intervals.forEach(interval => clearInterval(interval));
-                        }
-                        if (timerData.monitoringTimers) {
-                            timerData.monitoringTimers.forEach(timer => clearTimeout(timer));
-                        }
                     });
                     verificationTimers.current.clear();
                     console.log('🧹 Timers limpos ao desmontar componente');
@@ -5088,160 +5074,37 @@ useEffect(() => {
                     // Armazenar dados do sinal para validação precisa
                     let entryCandleData = null;
 
-                    // 📸 Sistema de captura preventiva de preços antes do fechamento do candle
-                    let preCapturedPrices = {
-                        entry: [],      // Snapshots do candle de entrada
-                        expiration: []  // Snapshots do candle de expiração
-                    };
-
-                    // 🔧 CRIAR TIMER REGISTRY ANTES de iniciar capturas (para que intervals possam se registrar)
+                    // 🔧 CRIAR TIMER REGISTRY
                     verificationTimers.current.set(signal.id, {
-                        timer: null,  // Será definido depois
-                        entryTimer: null,  // Será definido depois
-                        safetyTimeout: null,  // Será definido depois
-                        intervals: [],
-                        monitoringTimers: []
+                        timer: null,
+                        entryTimer: null,
+                        safetyTimeout: null
                     });
 
-                    // Função para monitorar e capturar preços antes do fechamento do candle
-                    const startPreCaptureMonitoring = (targetTimestamp, type = 'entry') => {
-                        // Calcular quando iniciar monitoramento (30s antes do fechamento do candle)
-                        const candleCloseTime = targetTimestamp + 300000; // +5min (fim do candle M5)
-                        const monitoringStartTime = candleCloseTime - 30000; // 30s antes do fechamento
-                        const now = Date.now();
-                        const delayToStart = Math.max(0, monitoringStartTime - now);
-
-                        console.log(`📸 [PRE-CAPTURE] Agendando monitoramento ${type}:`);
-                        console.log(`   Início do candle: ${new Date(targetTimestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`   Fim do candle: ${new Date(candleCloseTime).toLocaleTimeString('pt-BR')}`);
-                        console.log(`   Monitoramento inicia em: ${Math.floor(delayToStart/1000)}s`);
-
-                        const monitoringTimer = setTimeout(() => {
-                            console.log(`🎬 [PRE-CAPTURE] Iniciando captura preventiva (${type})`);
-
-                            let captureCount = 0;
-                            let successfulCaptures = 0;
-                            const maxCaptures = 10; // 10 capturas × 3s = 30 segundos de monitoramento
-
-                            const captureInterval = setInterval(() => {
-                                captureCount++; // ✅ SEMPRE incrementar para evitar loop infinito
-
-                                const currentPrice = marketDataRef.current?.getLatestPrice();
-
-                                if (currentPrice && currentPrice.close) {
-                                    const snapshot = {
-                                        timestamp: Date.now(),
-                                        price: currentPrice.close,
-                                        open: currentPrice.open,
-                                        high: currentPrice.high,
-                                        low: currentPrice.low,
-                                        candleTimestamp: currentPrice.timestamp,
-                                        wsTimestamp: currentPrice.timestamp // Timestamp do WebSocket
-                                    };
-
-                                    // 🔍 DETECTAR PREÇO TRAVADO (comparar apenas preço, não timestamp do candle)
-                                    const lastSnapshot = type === 'entry'
-                                        ? preCapturedPrices.entry[preCapturedPrices.entry.length - 1]
-                                        : preCapturedPrices.expiration[preCapturedPrices.expiration.length - 1];
-
-                                    if (lastSnapshot && lastSnapshot.price === snapshot.price) {
-                                        if (captureCount % 3 === 0) {
-                                            console.warn(`⚠️ [${type.toUpperCase()}] Preço TRAVADO em $${snapshot.price.toFixed(2)} por ${captureCount * 3}s (WebSocket pode estar lento)`);
-                                        }
-                                    } else if (lastSnapshot) {
-                                        // Preço mudou - log apenas de vez em quando para não poluir
-                                        if (captureCount % 3 === 0) {
-                                            console.log(`✅ [${type.toUpperCase()}] Preço atualizado: $${lastSnapshot.price.toFixed(2)} → $${snapshot.price.toFixed(2)}`);
-                                        }
-                                    }
-
-                                    if (type === 'entry') {
-                                        preCapturedPrices.entry.push(snapshot);
-                                    } else {
-                                        preCapturedPrices.expiration.push(snapshot);
-                                    }
-
-                                    successfulCaptures++;
-
-                                    if (successfulCaptures === 1 || successfulCaptures % 5 === 0 || captureCount === maxCaptures) {
-                                        console.log(`📸 [${type.toUpperCase()}] Snapshot ${successfulCaptures}/${captureCount}: $${snapshot.price.toFixed(2)} (WS: ${new Date(snapshot.candleTimestamp).toLocaleTimeString('pt-BR')})`);
-                                    }
-                                } else if (captureCount % 5 === 0) {
-                                    console.warn(`⚠️ [${type.toUpperCase()}] Preço não disponível (tentativa ${captureCount}/${maxCaptures})`);
-                                }
-
-                                // Parar após maxCaptures tentativas (não capturas bem-sucedidas)
-                                if (captureCount >= maxCaptures) {
-                                    clearInterval(captureInterval);
-                                    console.log(`✅ [PRE-CAPTURE] ${type} completada: ${successfulCaptures}/${captureCount} snapshots capturados`);
-                                    if (successfulCaptures === 0) {
-                                        console.error(`❌ [${type.toUpperCase()}] CRÍTICO: Nenhum snapshot capturado! marketData pode estar offline`);
-                                    }
-                                }
-                            }, 3000); // Capturar a cada 3 segundos
-
-                            // Armazenar interval para limpeza posterior
-                            const timerData = verificationTimers.current.get(signal.id);
-                            if (timerData) {
-                                if (!timerData.intervals) timerData.intervals = [];
-                                timerData.intervals.push(captureInterval);
-                            }
-
-                        }, delayToStart);
-
-                        // Armazenar timer de monitoramento para limpeza
-                        const timerData = verificationTimers.current.get(signal.id);
-                        if (timerData) {
-                            if (!timerData.monitoringTimers) timerData.monitoringTimers = [];
-                            timerData.monitoringTimers.push(monitoringTimer);
-                        }
-                    };
-
-                    // Agendar monitoramento para candle de entrada
-                    startPreCaptureMonitoring(entryTimestamp, 'entry');
-
-                    // Agendar monitoramento para candle de expiração
-                    startPreCaptureMonitoring(expirationTimestamp, 'expiration');
-
                     const entryTimer = setTimeout(() => {
-                        // MÉTODO APRIMORADO: Buscar candle exato por timestamp
+                        // Buscar candle de entrada (apenas para referência de preço para ML)
                         const entryCandle = marketDataRef.current?.getCandleByTimestamp(entryTimestamp);
 
                         if (entryCandle) {
-                            // Usar OPEN do candle de entrada (preço de abertura)
                             entryCandleData = {
                                 timestamp: entryCandle.timestamp,
                                 open: entryCandle.open,
                                 close: entryCandle.close,
                                 source: 'candle'
                             };
-                            console.log(`✅ [BINARY] Candle de entrada capturado com precisão`);
+                            console.log(`✅ [ENTRY] Candle de entrada registrado para ML`);
                             console.log(`   📌 Timestamp: ${new Date(entryCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                            console.log(`   📌 Open: ${entryCandle.open.toFixed(6)} (será usado para comparação)`);
+                            console.log(`   📌 Open: ${entryCandle.open.toFixed(6)}`);
                             console.log(`   📌 Close: ${entryCandle.close.toFixed(6)}`);
                         } else {
-                            // Fallback 1: Usar último snapshot capturado
-                            if (preCapturedPrices.entry.length > 0) {
-                                const lastSnapshot = preCapturedPrices.entry[preCapturedPrices.entry.length - 1];
-                                entryCandleData = {
-                                    timestamp: entryTimestamp,
-                                    open: lastSnapshot.open || lastSnapshot.price,
-                                    close: lastSnapshot.price,
-                                    source: 'pre-captured'
-                                };
-                                console.log(`🔄 [BINARY] Usando snapshot pré-capturado (${preCapturedPrices.entry.length} disponíveis)`);
-                                console.log(`   📌 Open: ${entryCandleData.open.toFixed(6)}`);
-                                console.log(`   📌 Close: ${entryCandleData.close.toFixed(6)}`);
-                            } else {
-                                // Fallback 2: usar preço do sinal
-                                entryCandleData = {
-                                    timestamp: entryTimestamp,
-                                    open: signal.price,
-                                    close: signal.price,
-                                    source: 'signal'
-                                };
-                                console.warn(`⚠️ [BINARY] Usando preço do sinal: ${signal.price.toFixed(6)}`);
-                            }
+                            // Fallback: usar preço do sinal
+                            entryCandleData = {
+                                timestamp: entryTimestamp,
+                                open: signal.price,
+                                close: signal.price,
+                                source: 'signal'
+                            };
+                            console.log(`📊 [ENTRY] Usando preço do sinal: ${signal.price.toFixed(6)}`);
                         }
 
                         // Notificar execução
@@ -5292,59 +5155,12 @@ useEffect(() => {
                             return null;
                         };
 
-                        // ⚡ OTIMIZAÇÃO ML: Se temos snapshots, usar IMEDIATAMENTE (sem esperar retries)
-                        let expirationCandle = null;
-
-                        if (preCapturedPrices.expiration.length > 0) {
-                            // Usar snapshot pré-capturado PRIMEIRO (mais rápido!)
-                            const lastSnapshot = preCapturedPrices.expiration[preCapturedPrices.expiration.length - 1];
-                            expirationCandle = {
-                                timestamp: expirationTimestamp,
-                                open: lastSnapshot.open || lastSnapshot.price,
-                                high: lastSnapshot.high || lastSnapshot.price,
-                                low: lastSnapshot.low || lastSnapshot.price,
-                                close: lastSnapshot.price,
-                                isClosed: true,
-                                source: 'pre-captured'
-                            };
-                            console.log(`⚡ [FAST] Usando snapshot pré-capturado (${preCapturedPrices.expiration.length} disponíveis)`);
-                        } else {
-                            // Fallback: Buscar candle com retry
-                            expirationCandle = await getExpirationCandleWithRetry();
-                        }
-
-                        // 🔄 FALLBACK FINAL: Se ainda não tem, tentar snapshots novamente
-                        if (!expirationCandle && preCapturedPrices.expiration.length > 0) {
-                            const lastSnapshot = preCapturedPrices.expiration[preCapturedPrices.expiration.length - 1];
-
-                            expirationCandle = {
-                                timestamp: expirationTimestamp,
-                                open: lastSnapshot.open || lastSnapshot.price,
-                                high: lastSnapshot.high || lastSnapshot.price,
-                                low: lastSnapshot.low || lastSnapshot.price,
-                                close: lastSnapshot.price,
-                                isClosed: true,
-                                source: 'pre-captured'
-                            };
-
-                            console.log(`🔄 [BINARY] Usando snapshot pré-capturado de expiração`);
-                            console.log(`   📸 Total de snapshots: ${preCapturedPrices.expiration.length}`);
-                            console.log(`   📸 Último snapshot: ${new Date(lastSnapshot.timestamp).toLocaleTimeString('pt-BR')}`);
-                            console.log(`   💰 Preço de fechamento: ${lastSnapshot.price.toFixed(6)}`);
-                        }
+                        // Buscar candle de expiração fechado
+                        const expirationCandle = await getExpirationCandleWithRetry();
 
                         if (!expirationCandle) {
                             console.error('❌ [BINARY] FALHA: Candle de expiração não disponível');
-                            console.error(`   Snapshots disponíveis: ${preCapturedPrices.expiration.length}`);
                             console.error(`   Timestamp esperado: ${new Date(expirationTimestamp).toLocaleString('pt-BR')}`);
-                            verifySignalOutcome(signal, 'EXPIRADO', 0, null);
-                            return;
-                        }
-
-                        if (!entryCandleData) {
-                            console.error('❌ [BINARY] FALHA: Dados de entrada não capturados');
-                            console.error(`   Snapshots disponíveis: ${preCapturedPrices.entry.length}`);
-                            console.error(`   Timestamp esperado: ${new Date(entryTimestamp).toLocaleString('pt-BR')}`);
                             verifySignalOutcome(signal, 'EXPIRADO', 0, null);
                             return;
                         }
@@ -5357,17 +5173,10 @@ useEffect(() => {
                         const isCandleRed = expirationClose < expirationOpen;   // Vermelho = venda
                         const candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
 
-                        // Log da fonte dos dados
-                        console.log(`📊 [BINARY] Fonte dos dados:`);
-                        console.log(`   Entrada: ${entryCandleData.source || 'candle'}`);
-                        console.log(`   Expiração: ${expirationCandle.source || 'candle'}`);
-
                         console.log(`🔍 [BINARY] Validação por Cor do Candle:`);
-                        console.log(`   📥 Entrada - Candle ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`      Open: ${entryCandleData.open.toFixed(6)}`);
-                        console.log(`   📤 Expiração - Candle ${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`      Open: ${expirationOpen.toFixed(6)}`);
-                        console.log(`      Close: ${expirationClose.toFixed(6)}`);
+                        console.log(`   📥 Entrada (referência ML): ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')} - Open: ${entryCandleData.open.toFixed(6)}`);
+                        console.log(`   📤 Expiração: ${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')}`);
+                        console.log(`      Open: ${expirationOpen.toFixed(6)} → Close: ${expirationClose.toFixed(6)}`);
                         console.log(`      Cor: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
 
                         let result = null;
@@ -5686,13 +5495,6 @@ useEffect(() => {
                         if (timerData.timer) clearTimeout(timerData.timer);
                         if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
                         if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
-                        if (timerData.interval) clearInterval(timerData.interval);
-                        if (timerData.intervals) {
-                            timerData.intervals.forEach(interval => clearInterval(interval));
-                        }
-                        if (timerData.monitoringTimers) {
-                            timerData.monitoringTimers.forEach(timer => clearTimeout(timer));
-                        }
                         verificationTimers.current.delete(signalId);
                     }
                     
