@@ -5111,9 +5111,10 @@ useEffect(() => {
                         showNotification(`✅ Entrada: ${signal.direction} @ ${entryCandleData.open.toFixed(6)}`);
                     }, timeUntilEntry);
 
-                    // Validar APÓS o horário de expiração + buffer para garantir que candle foi fechado e está disponível
-                    // ⚡ OTIMIZADO: Reduzido para 3s (ML precisa de confirmações rápidas)
-                    const bufferTime = 3000; // 3 segundos (era 15s - muito lento!)
+                    // Validar APÓS o candle de expiração fechar
+                    // O candle fecha no início do próximo (ex: candle 10:05-10:10 fecha às 10:10:00)
+                    // Aguardamos poucos segundos para o WebSocket processar o candle fechado
+                    const bufferTime = 5000; // 5 segundos após fechamento do candle
                     const verificationTimerId = setTimeout(async () => {
                         try {
                             console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
@@ -5122,9 +5123,14 @@ useEffect(() => {
                         const getExpirationCandleWithRetry = async (maxRetries = 3, delayMs = 500) => {
                             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                 const candle = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
-                                if (candle) {
+
+                                // ✅ VALIDAÇÃO: Só aceitar candles FECHADOS (não em formação)
+                                if (candle && candle.isClosed !== false) {
                                     console.log(`✅ [BINARY] Candle de expiração obtido (tentativa ${attempt}/${maxRetries})`);
+                                    console.log(`   Status: ${candle.isClosed ? 'Fechado' : 'Presumido fechado (sem flag)'}`);
                                     return candle;
+                                } else if (candle && candle.isClosed === false) {
+                                    console.warn(`⚠️ [BINARY] Candle ainda em formação, aguardando fechar...`);
                                 }
 
                                 // Na segunda tentativa, fazer busca proativa via REST API
