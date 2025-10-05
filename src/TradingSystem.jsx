@@ -5639,6 +5639,40 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 }
             };
 
+            const executeSignalFromCard = async (signal) => {
+                try {
+                    if (!signal || !orderExecutorRef.current) {
+                        showNotification('❌ Erro: Sistema de execução não disponível');
+                        return;
+                    }
+
+                    if (signal.executed) {
+                        showNotification('⚠️ Este sinal já foi executado');
+                        return;
+                    }
+
+                    // Executar o sinal manualmente
+                    const result = await orderExecutorRef.current.executeManualSignal();
+
+                    if (result.success) {
+                        // Marcar sinal como executado
+                        signal.executed = true;
+                        signal.executionDetails = result;
+
+                        // Atualizar na lista
+                        setSignals(prev => prev.map(s => s.id === signal.id ? signal : s));
+
+                        showNotification('✅ Ordem executada com sucesso!', 'success');
+                        setUpdateTrigger(t => t + 1);
+                    } else {
+                        showNotification(`❌ Erro ao executar: ${result.message}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Erro ao executar sinal:', error);
+                    showNotification('❌ Erro ao executar ordem', 'error');
+                }
+            };
+
             const formatBRL = (value) => {
                 if (value === null || value === undefined) return 'R$ 0,00';
                 return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -6469,6 +6503,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                         signal={signal}
                                         onDismiss={dismissSignal}
                                         onCopy={copySignalDetails}
+                                        onExecute={executeSignalFromCard}
                                         formatBRL={formatBRL}
                                         mode={mode}
                                     />
@@ -6632,7 +6667,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
         /* CONTINUAÇÃO DOS COMPONENTES - SignalCard, RobotView, AuditView, ConnectionsView, Settings */
 
-        function SignalCard({ signal, onDismiss, onCopy, formatBRL, mode }) {
+        function SignalCard({ signal, onDismiss, onCopy, formatBRL, mode, onExecute }) {
             if (!signal) return null;
 
             const getStatusClass = () => {
@@ -6870,8 +6905,27 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             )}
                         </div>
                     )}
-                    
+
                     <div className="signal-actions">
+                        {/* Botão EXECUTAR ORDEM - só aparece em modo MANUAL, sinal PENDENTE e tempo de entrada não expirado */}
+                        {mode === 'manual' && signal.status === 'PENDENTE' && !signal.executed && timeToEntry > 0 && (
+                            <button
+                                className="btn btn-success"
+                                onClick={() => onExecute && onExecute(signal)}
+                                style={{
+                                    gridColumn: '1 / -1',
+                                    backgroundColor: '#00ff88',
+                                    color: '#000',
+                                    fontWeight: 'bold',
+                                    fontSize: '14px',
+                                    padding: '12px',
+                                    marginBottom: '8px'
+                                }}
+                            >
+                                ✅ EXECUTAR ORDEM
+                            </button>
+                        )}
+
                         <button className="btn btn-primary" onClick={() => onCopy && onCopy(signal)}>
                             📋 Copiar
                         </button>
