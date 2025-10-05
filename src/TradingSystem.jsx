@@ -4621,7 +4621,14 @@ useEffect(() => {
                             console.log(`🧹 Limpando timer órfão: ${signalId}`);
                             if (timerData.timer) clearTimeout(timerData.timer);
                             if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
+                            if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
                             if (timerData.interval) clearInterval(timerData.interval);
+                            if (timerData.intervals) {
+                                timerData.intervals.forEach(interval => clearInterval(interval));
+                            }
+                            if (timerData.monitoringTimers) {
+                                timerData.monitoringTimers.forEach(timer => clearTimeout(timer));
+                            }
                             verificationTimers.current.delete(signalId);
                         }
                     });
@@ -4678,7 +4685,15 @@ useEffect(() => {
                     // Limpar todos os timers de verificação
                     verificationTimers.current.forEach((timerData) => {
                         if (timerData.timer) clearTimeout(timerData.timer);
+                        if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
+                        if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
                         if (timerData.interval) clearInterval(timerData.interval);
+                        if (timerData.intervals) {
+                            timerData.intervals.forEach(interval => clearInterval(interval));
+                        }
+                        if (timerData.monitoringTimers) {
+                            timerData.monitoringTimers.forEach(timer => clearTimeout(timer));
+                        }
                     });
                     verificationTimers.current.clear();
                     console.log('🧹 Timers limpos ao desmontar componente');
@@ -5063,7 +5078,7 @@ useEffect(() => {
                         console.log(`   Fim do candle: ${new Date(candleCloseTime).toLocaleTimeString('pt-BR')}`);
                         console.log(`   Monitoramento inicia em: ${Math.floor(delayToStart/1000)}s`);
 
-                        setTimeout(() => {
+                        const monitoringTimer = setTimeout(() => {
                             console.log(`🎬 [PRE-CAPTURE] Iniciando captura preventiva (${type})`);
 
                             let captureCount = 0;
@@ -5101,7 +5116,21 @@ useEffect(() => {
                                 }
                             }, 1000); // Capturar a cada 1 segundo
 
+                            // Armazenar interval para limpeza posterior
+                            const timerData = verificationTimers.current.get(signal.id);
+                            if (timerData) {
+                                if (!timerData.intervals) timerData.intervals = [];
+                                timerData.intervals.push(captureInterval);
+                            }
+
                         }, delayToStart);
+
+                        // Armazenar timer de monitoramento para limpeza
+                        const timerData = verificationTimers.current.get(signal.id);
+                        if (timerData) {
+                            if (!timerData.monitoringTimers) timerData.monitoringTimers = [];
+                            timerData.monitoringTimers.push(monitoringTimer);
+                        }
                     };
 
                     // Agendar monitoramento para candle de entrada
@@ -5159,8 +5188,9 @@ useEffect(() => {
                     // Adicionar 15 segundos de buffer para dar tempo do candle ser processado e armazenado
                     const bufferTime = 15000; // 15 segundos
                     const verificationTimerId = setTimeout(async () => {
-                        clearTimeout(entryTimer);
-                        console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
+                        try {
+                            clearTimeout(entryTimer);
+                            console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
 
                         // Função para tentar obter o candle com retry e busca proativa
                         const getExpirationCandleWithRetry = async (maxRetries = 3, delayMs = 2000) => {
@@ -5345,11 +5375,27 @@ useEffect(() => {
                         if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
                             window.telegramNotifier.notifyResult(signal, result, pnl);
                         }
+                        } catch (error) {
+                            console.error('❌ [BINARY] Erro na verificação do sinal:', error);
+                            // Marcar como EXPIRADO em caso de erro
+                            verifySignalOutcome(signal, 'EXPIRADO', 0, null);
+                        }
                     }, timeUntilExpiration + bufferTime); // Aguardar expiração + buffer de 15s
+
+                    // Timeout de segurança: Garantir que o sinal será marcado como EXPIRADO após 10 minutos
+                    const maxWaitTime = 10 * 60 * 1000; // 10 minutos
+                    const safetyTimeout = setTimeout(() => {
+                        const currentSignal = signals.find(s => s.id === signal.id);
+                        if (currentSignal && currentSignal.status === 'PENDENTE') {
+                            console.warn(`⚠️ [SAFETY] Sinal ${signal.id} ainda pendente após ${maxWaitTime/60000} minutos - forçando EXPIRADO`);
+                            verifySignalOutcome(signal, 'EXPIRADO', 0, null);
+                        }
+                    }, timeUntilExpiration + bufferTime + maxWaitTime);
 
                     verificationTimers.current.set(signal.id, {
                         timer: verificationTimerId,
-                        entryTimer: entryTimer
+                        entryTimer: entryTimer,
+                        safetyTimeout: safetyTimeout
                     });
                 } catch (error) {
                     console.error('Erro ao agendar verificação:', error);
@@ -5543,7 +5589,15 @@ useEffect(() => {
                     const timerData = verificationTimers.current.get(signalId);
                     if (timerData) {
                         if (timerData.timer) clearTimeout(timerData.timer);
+                        if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
+                        if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
                         if (timerData.interval) clearInterval(timerData.interval);
+                        if (timerData.intervals) {
+                            timerData.intervals.forEach(interval => clearInterval(interval));
+                        }
+                        if (timerData.monitoringTimers) {
+                            timerData.monitoringTimers.forEach(timer => clearTimeout(timer));
+                        }
                         verificationTimers.current.delete(signalId);
                     }
                     
