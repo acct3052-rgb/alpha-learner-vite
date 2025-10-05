@@ -7,7 +7,7 @@
 import React from 'react'
 
 // Usar hooks do React
-const { useState, useEffect, useRef, useCallback } = React
+const { useState, useEffect, useRef } = React
 
 // Supabase será acessado via window.supabase (definido em App.jsx)
 // Não criar referência const aqui pois window.supabase ainda é undefined neste momento
@@ -5640,7 +5640,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 }
             };
 
-            const executeSignalFromCard = useCallback(async (signal) => {
+            const executeSignalFromCard = async (signal) => {
                 console.log('🔧 executeSignalFromCard chamado:', signal?.id);
                 try {
                     if (!signal || !orderExecutorRef.current) {
@@ -5673,7 +5673,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                     console.error('Erro ao executar sinal:', error);
                     showNotification('❌ Erro ao executar ordem', 'error');
                 }
-            }, []);
+            };
 
             const formatBRL = (value) => {
                 if (value === null || value === undefined) return 'R$ 0,00';
