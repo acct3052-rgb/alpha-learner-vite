@@ -55,11 +55,11 @@ window.clearAllData = async function(options = {}) {
                 console.log(`   ✅ ${deleted} sinais removidos`);
             }
 
-            // Limpar ML weights
+            // Limpar ML weights (usa timestamp ao invés de id)
             const { error: weightsError, count: weightsCount } = await window.supabase
                 .from('ml_weights_evolution')
                 .delete()
-                .neq('id', '00000000-0000-0000-0000-000000000000');
+                .gte('timestamp', 0);
 
             if (weightsError) {
                 console.warn(`   ⚠️ Erro ao limpar ml_weights_evolution: ${weightsError.message}`);
@@ -69,11 +69,11 @@ window.clearAllData = async function(options = {}) {
                 console.log(`   ✅ ${deleted} registros ML removidos`);
             }
 
-            // Limpar audit logs
+            // Limpar audit logs (usa timestamp ao invés de id)
             const { error: auditError, count: auditCount } = await window.supabase
                 .from('audit_logs')
                 .delete()
-                .neq('id', '00000000-0000-0000-0000-000000000000');
+                .gte('timestamp', 0);
 
             if (auditError) {
                 console.warn(`   ⚠️ Erro ao limpar audit_logs: ${auditError.message}`);
@@ -83,11 +83,11 @@ window.clearAllData = async function(options = {}) {
                 console.log(`   ✅ ${deleted} logs removidos`);
             }
 
-            // Limpar performance stats
+            // Limpar performance stats (usa timestamp ao invés de id)
             const { error: statsError, count: statsCount } = await window.supabase
                 .from('performance_stats')
                 .delete()
-                .neq('id', '00000000-0000-0000-0000-000000000000');
+                .gte('timestamp', 0);
 
             if (statsError) {
                 console.warn(`   ⚠️ Erro ao limpar performance_stats: ${statsError.message}`);
