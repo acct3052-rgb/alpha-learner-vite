@@ -5213,11 +5213,12 @@ useEffect(() => {
                         }
 
                         console.log(`🏁 [BINARY] Resultado Final: ${result}`);
-                        console.log(`   Direção: ${signal.direction}`);
-                        console.log(`   Candle Expiração: Open ${expirationOpen.toFixed(6)} → Close ${expirationClose.toFixed(6)}`);
-                        console.log(`   Cor do Candle: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
-                        console.log(`   Variação: ${(expirationClose - expirationOpen).toFixed(6)}`);
-                        console.log(`   P&L: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`);
+                        console.log(`   Direção do Sinal: ${signal.direction} (esperava candle ${signal.direction === 'BUY' ? 'VERDE 🟢' : 'VERMELHO 🔴'})`);
+                        console.log(`   ⏰ Timestamp Expiração: ${expirationCandle.timestamp} (${new Date(expirationCandle.timestamp).toLocaleString('pt-BR')})`);
+                        console.log(`   📊 Candle Expiração: Open ${expirationOpen.toFixed(2)} → Close ${expirationClose.toFixed(2)}`);
+                        console.log(`   🎨 Cor do Candle: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`   📏 Variação: ${(expirationClose - expirationOpen).toFixed(2)} pts`);
+                        console.log(`   💰 P&L: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`);
 
                         verificationTimers.current.delete(signal.id);
 
