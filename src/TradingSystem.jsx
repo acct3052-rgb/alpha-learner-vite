@@ -5162,12 +5162,13 @@ useEffect(() => {
                         const expirationClose = expirationCandle.close;
                         const variation = expirationClose - expirationOpen;
 
-                        // Definir margem mínima para evitar falsos DOJIs (0.001% do preço)
-                        const minVariation = expirationOpen * 0.00001; // 0.001% do preço (~1.23 pts em 123k)
+                        // Para opções binárias, qualquer direção conta (não importa magnitude)
+                        // DOJI apenas se variação for exatamente zero ou quase zero (arredondamento)
+                        const minVariation = 0.0001; // Threshold mínimo absoluto (~0.0001 pts)
 
-                        const isCandleGreen = variation > minVariation;  // Verde = subiu mais que margem
-                        const isCandleRed = variation < -minVariation;   // Vermelho = caiu mais que margem
-                        const isDoji = Math.abs(variation) <= minVariation; // DOJI = variação muito pequena
+                        const isCandleGreen = variation > minVariation;  // Verde = qualquer subida
+                        const isCandleRed = variation < -minVariation;   // Vermelho = qualquer descida
+                        const isDoji = Math.abs(variation) <= minVariation; // DOJI = variação zero
                         const candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
 
                         console.log(`🔍 [BINARY] Validação por Cor do Candle:`);
