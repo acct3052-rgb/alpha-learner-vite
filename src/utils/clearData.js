@@ -30,16 +30,21 @@ export async function clearAllData(options = {}) {
     if (clearSupabase) {
         console.log('\n📦 Limpando dados do Supabase...');
         try {
+            let totalDeleted = 0;
+
             // Limpar tabela de sinais
             const { error: signalsError, count: signalsCount } = await supabase
-                .from('signals_history')
+                .from('signals')
                 .delete()
                 .neq('id', '00000000-0000-0000-0000-000000000000'); // Deleta todos (id nunca será esse)
 
             if (signalsError) {
-                throw new Error(`Erro ao limpar signals_history: ${signalsError.message}`);
+                console.warn(`   ⚠️ Erro ao limpar signals: ${signalsError.message}`);
+            } else {
+                const deleted = signalsCount || 0;
+                totalDeleted += deleted;
+                console.log(`   ✅ ${deleted} sinais removidos da tabela signals`);
             }
-            console.log(`   ✅ ${signalsCount || 0} sinais removidos da tabela signals_history`);
 
             // Limpar tabela de evolução de pesos ML
             const { error: weightsError, count: weightsCount } = await supabase
@@ -48,23 +53,43 @@ export async function clearAllData(options = {}) {
                 .neq('id', '00000000-0000-0000-0000-000000000000');
 
             if (weightsError) {
-                throw new Error(`Erro ao limpar ml_weights_evolution: ${weightsError.message}`);
+                console.warn(`   ⚠️ Erro ao limpar ml_weights_evolution: ${weightsError.message}`);
+            } else {
+                const deleted = weightsCount || 0;
+                totalDeleted += deleted;
+                console.log(`   ✅ ${deleted} registros de ML removidos da tabela ml_weights_evolution`);
             }
-            console.log(`   ✅ ${weightsCount || 0} registros de ML removidos da tabela ml_weights_evolution`);
 
-            // Limpar tabela de snapshots de configuração
-            const { error: configError, count: configCount } = await supabase
-                .from('config_snapshots')
+            // Limpar tabela de audit_logs
+            const { error: auditError, count: auditCount } = await supabase
+                .from('audit_logs')
                 .delete()
                 .neq('id', '00000000-0000-0000-0000-000000000000');
 
-            if (configError) {
-                throw new Error(`Erro ao limpar config_snapshots: ${configError.message}`);
+            if (auditError) {
+                console.warn(`   ⚠️ Erro ao limpar audit_logs: ${auditError.message}`);
+            } else {
+                const deleted = auditCount || 0;
+                totalDeleted += deleted;
+                console.log(`   ✅ ${deleted} logs de auditoria removidos da tabela audit_logs`);
             }
-            console.log(`   ✅ ${configCount || 0} snapshots de config removidos da tabela config_snapshots`);
+
+            // Limpar tabela de performance_stats
+            const { error: statsError, count: statsCount } = await supabase
+                .from('performance_stats')
+                .delete()
+                .neq('id', '00000000-0000-0000-0000-000000000000');
+
+            if (statsError) {
+                console.warn(`   ⚠️ Erro ao limpar performance_stats: ${statsError.message}`);
+            } else {
+                const deleted = statsCount || 0;
+                totalDeleted += deleted;
+                console.log(`   ✅ ${deleted} estatísticas removidas da tabela performance_stats`);
+            }
 
             results.supabase.success = true;
-            console.log('✅ Supabase limpo com sucesso!');
+            console.log(`✅ Supabase limpo com sucesso! Total: ${totalDeleted} registros removidos`);
 
         } catch (error) {
             console.error('❌ Erro ao limpar Supabase:', error);
