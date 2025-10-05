@@ -2473,7 +2473,14 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                                 }
                             } else {
                                 // Candle em formação - atualizar em tempo real
+                                const priceChanged = !this.currentCandle || this.currentCandle.close !== candle.close;
+
                                 this.currentCandle = candle;
+
+                                // 🔍 LOG para debug de atualização
+                                if (priceChanged && Math.random() < 0.1) { // Log 10% das atualizações para não poluir
+                                    console.log(`📊 [WS] CurrentCandle atualizado: $${candle.close.toFixed(2)} (${new Date(candle.timestamp).toLocaleTimeString('pt-BR')})`);
+                                }
 
                                 // Callback para atualizar UI em tempo real
                                 if (onUpdate) {
@@ -2563,6 +2570,19 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             getLatestPrice() {
                 // Priorizar candle atual em formação (mais recente)
                 if (this.currentCandle) {
+                    // 🔍 LOG detalhado quando detectar preço repetido
+                    if (this.lastPriceCheck && this.lastPriceCheck.close === this.currentCandle.close && this.lastPriceCheck.timestamp === this.currentCandle.timestamp) {
+                        this.stuckPriceCount++;
+                        if (this.stuckPriceCount === 5 || this.stuckPriceCount === 10 || this.stuckPriceCount === 15) {
+                            console.error(`❌ [MARKETDATA] CurrentCandle TRAVADO há ${this.stuckPriceCount} chamadas:`);
+                            console.error(`   Preço: $${this.currentCandle.close.toFixed(2)}`);
+                            console.error(`   Timestamp WS: ${new Date(this.currentCandle.timestamp).toLocaleString('pt-BR')}`);
+                            console.error(`   Há quanto tempo: ${Math.floor((Date.now() - this.lastPongTime) / 1000)}s desde último update`);
+                        }
+                    } else {
+                        this.stuckPriceCount = 0;
+                    }
+                    this.lastPriceCheck = this.currentCandle;
                     return this.currentCandle;
                 }
 
@@ -5115,8 +5135,20 @@ useEffect(() => {
                                         open: currentPrice.open,
                                         high: currentPrice.high,
                                         low: currentPrice.low,
-                                        candleTimestamp: currentPrice.timestamp
+                                        candleTimestamp: currentPrice.timestamp,
+                                        wsTimestamp: currentPrice.timestamp // Timestamp do WebSocket
                                     };
+
+                                    // 🔍 DETECTAR PREÇO TRAVADO
+                                    const lastSnapshot = type === 'entry'
+                                        ? preCapturedPrices.entry[preCapturedPrices.entry.length - 1]
+                                        : preCapturedPrices.expiration[preCapturedPrices.expiration.length - 1];
+
+                                    if (lastSnapshot && lastSnapshot.price === snapshot.price && lastSnapshot.candleTimestamp === snapshot.candleTimestamp) {
+                                        if (captureCount % 3 === 0) {
+                                            console.warn(`⚠️ [${type.toUpperCase()}] Preço TRAVADO em $${snapshot.price.toFixed(2)} (WebSocket pode estar lento)`);
+                                        }
+                                    }
 
                                     if (type === 'entry') {
                                         preCapturedPrices.entry.push(snapshot);
@@ -5127,7 +5159,7 @@ useEffect(() => {
                                     successfulCaptures++;
 
                                     if (successfulCaptures === 1 || successfulCaptures % 5 === 0 || captureCount === maxCaptures) {
-                                        console.log(`📸 [${type.toUpperCase()}] Snapshot ${successfulCaptures}/${captureCount}: $${snapshot.price.toFixed(2)}`);
+                                        console.log(`📸 [${type.toUpperCase()}] Snapshot ${successfulCaptures}/${captureCount}: $${snapshot.price.toFixed(2)} (WS: ${new Date(snapshot.candleTimestamp).toLocaleTimeString('pt-BR')})`);
                                     }
                                 } else if (captureCount % 5 === 0) {
                                     console.warn(`⚠️ [${type.toUpperCase()}] Preço não disponível (tentativa ${captureCount}/${maxCaptures})`);
