@@ -3097,8 +3097,12 @@ class TPSLOptimizer {
 
     async learnFromResults() {
         if (!this.auditSystem) return;
-        
-        const logs = this.auditSystem.getRecentLogs(100);
+
+        const logs = await this.auditSystem.getRecentLogs(100);
+        if (!Array.isArray(logs)) {
+            console.warn('⚠️ getRecentLogs não retornou array:', logs);
+            return;
+        }
         const completedLogs = logs.filter(l => l.outcome && l.outcome !== 'PENDENTE');
         
         if (completedLogs.length < 20) return;
@@ -4581,9 +4585,9 @@ useEffect(() => {
             console.log('🎉 Sistema totalmente inicializado!');
             console.log('%c💡 Sistema agora usa SUPABASE para persistência!', 'color: #00ff88; font-weight: bold;');
             
-            setInterval(() => {
+            setInterval(async () => {
                 if (alphaEngineRef.current && alphaEngineRef.current.tpslOptimizer) {
-                    alphaEngineRef.current.tpslOptimizer.learnFromResults();
+                    await alphaEngineRef.current.tpslOptimizer.learnFromResults();
                 }
             }, 5 * 60 * 1000);
 
@@ -7887,7 +7891,11 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
                 const calculateMetrics = async () => {
                     if (!auditSystem || !alphaEngine || !memoryDB) return;
 
-                    const logs = auditSystem.getRecentLogs(200);
+                    const logs = await auditSystem.getRecentLogs(200);
+                    if (!Array.isArray(logs)) {
+                        console.warn('⚠️ getRecentLogs não retornou array em AdvancedMetrics:', logs);
+                        return;
+                    }
                     const completedLogs = logs.filter(l => l.outcome && l.outcome !== 'PENDENTE');
                     
                     if (completedLogs.length === 0) {
