@@ -5173,7 +5173,7 @@ useEffect(() => {
                                         console.error(`❌ [${type.toUpperCase()}] CRÍTICO: Nenhum snapshot capturado! marketData pode estar offline`);
                                     }
                                 }
-                            }, 1000); // Capturar a cada 1 segundo
+                            }, 3000); // Capturar a cada 3 segundos
 
                             // Armazenar interval para limpeza posterior
                             const timerData = verificationTimers.current.get(signal.id);
@@ -5251,8 +5251,8 @@ useEffect(() => {
                             clearTimeout(entryTimer);
                             console.log(`⏰ [BINARY] Iniciando verificação com ${bufferTime/1000}s de buffer após expiração`);
 
-                        // ⚡ OTIMIZADO: Menos tentativas, delays menores (ML precisa de velocidade)
-                        const getExpirationCandleWithRetry = async (maxRetries = 2, delayMs = 1000) => {
+                        // ⚡ OTIMIZADO: Mais tentativas, delays menores (ML precisa de velocidade e confiabilidade)
+                        const getExpirationCandleWithRetry = async (maxRetries = 3, delayMs = 500) => {
                             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                 const candle = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
                                 if (candle) {
