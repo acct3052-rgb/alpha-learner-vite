@@ -5162,8 +5162,8 @@ useEffect(() => {
                         const expirationClose = expirationCandle.close;
                         const variation = expirationClose - expirationOpen;
 
-                        // Definir margem mínima para evitar falsos DOJIs (0.01% do preço)
-                        const minVariation = expirationOpen * 0.0001; // 0.01% do preço
+                        // Definir margem mínima para evitar falsos DOJIs (0.001% do preço)
+                        const minVariation = expirationOpen * 0.00001; // 0.001% do preço (~1.23 pts em 123k)
 
                         const isCandleGreen = variation > minVariation;  // Verde = subiu mais que margem
                         const isCandleRed = variation < -minVariation;   // Vermelho = caiu mais que margem
