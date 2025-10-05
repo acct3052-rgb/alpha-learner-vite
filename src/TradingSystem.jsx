@@ -5679,6 +5679,10 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 }
             };
 
+            // 🔍 DEBUG: Confirmar que a função foi definida
+            console.log('✅ executeSignalFromCard definida:', typeof executeSignalFromCard);
+            window.executeSignalFromCard = executeSignalFromCard; // Disponibilizar globalmente para debug
+
             const formatBRL = (value) => {
                 if (value === null || value === undefined) return 'R$ 0,00';
                 return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
