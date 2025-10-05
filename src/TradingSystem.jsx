@@ -788,6 +788,10 @@ const { useState, useEffect, useRef } = React
                     }
 
                     if (orderResult.success) {
+                        // Marcar sinal como executado
+                        signal.executed = true;
+                        signal.executionDetails = orderResult;
+
                         // Adicionar riskAmount ao orderResult
                         orderResult.riskAmount = riskAmount;
 
@@ -5711,6 +5715,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
         function ManualSignalPopup({ orderExecutor, onExecute, showNotification }) {
             const [pendingSignal, setPendingSignal] = useState(null);
             const [timeToEntry, setTimeToEntry] = useState(0);
+            const [popupDisplayTime, setPopupDisplayTime] = useState(0);
 
             // Verificar sinal pendente a cada 1 segundo
             useEffect(() => {
@@ -5718,13 +5723,32 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                     if (orderExecutor) {
                         const signal = orderExecutor.getPendingSignal();
                         setPendingSignal(signal);
+
+                        // Reset do contador quando novo sinal aparece
+                        if (signal && !pendingSignal) {
+                            setPopupDisplayTime(0);
+                        }
                     }
                 }, 1000);
 
                 return () => clearInterval(interval);
-            }, [orderExecutor]);
+            }, [orderExecutor, pendingSignal]);
 
-            // Calcular tempo até entrada e fechar popup automaticamente
+            // Timer de exibição do popup (60 segundos)
+            useEffect(() => {
+                if (!pendingSignal) {
+                    setPopupDisplayTime(0);
+                    return;
+                }
+
+                const displayTimer = setInterval(() => {
+                    setPopupDisplayTime(prev => prev + 1);
+                }, 1000);
+
+                return () => clearInterval(displayTimer);
+            }, [pendingSignal]);
+
+            // Calcular tempo até entrada e fechar popup automaticamente após 60s
             useEffect(() => {
                 if (!pendingSignal || !pendingSignal.signal || !pendingSignal.signal.entryTime) {
                     setTimeToEntry(0);
@@ -5738,11 +5762,12 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
                     setTimeToEntry(remaining);
 
-                    // Fechar popup automaticamente quando o tempo acabar
-                    if (remaining === 0 && orderExecutor) {
-                        console.log('⏰ Tempo de entrada expirado - fechando popup automaticamente');
+                    // Fechar popup automaticamente após 60s sem interação
+                    if (popupDisplayTime >= 60 && orderExecutor) {
+                        console.log('⏰ Popup exibido por 60s sem interação - fechando automaticamente');
                         orderExecutor.ignoreManualSignal();
-                        showNotification('⏱️ Tempo de entrada expirado', 'info');
+                        showNotification('⏱️ Popup recolhido automaticamente', 'info');
+                        return;
                     }
                 };
 
@@ -5753,7 +5778,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 const timer = setInterval(updateTimeToEntry, 1000);
 
                 return () => clearInterval(timer);
-            }, [pendingSignal, orderExecutor, showNotification]);
+            }, [pendingSignal, orderExecutor, showNotification, popupDisplayTime]);
 
             if (!pendingSignal) return null;
 
@@ -5777,6 +5802,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 if (result.success) {
                     showNotification('✅ Ordem executada com sucesso!', 'success');
                     onExecute();
+                    // Popup será fechado automaticamente ao limpar pendingSignal
                 } else {
                     showNotification(`❌ Erro: ${result.message}`, 'error');
                 }
@@ -6639,9 +6665,9 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             {signal.status === 'PENDENTE' && '⏳ PENDENTE'}
                             {signal.status === 'CANCELADO' && '🚫 CANCELADO'}
                         </span>
-                        {mode === 'auto' && signal.executed && (
+                        {signal.executed && (
                             <span className="signal-status success" style={{ marginLeft: '5px' }}>
-                                🤖 EXECUTADO
+                                {mode === 'auto' ? '🤖 EXECUTADO' : '✅ ORDEM EXECUTADA'}
                             </span>
                         )}
                     </div>
