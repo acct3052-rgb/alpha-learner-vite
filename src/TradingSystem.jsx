@@ -2328,15 +2328,27 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                         return null;
                     }
 
-                    const candles = data.map(k => ({
-                        timestamp: k[0],
-                        open: parseFloat(k[1]),
-                        high: parseFloat(k[2]),
-                        low: parseFloat(k[3]),
-                        close: parseFloat(k[4]),
-                        volume: parseFloat(k[5]),
-                        isClosed: true
-                    }));
+                    const candles = data.map(k => {
+                        const candle = {
+                            timestamp: k[0],
+                            open: parseFloat(k[1]),
+                            high: parseFloat(k[2]),
+                            low: parseFloat(k[3]),
+                            close: parseFloat(k[4]),
+                            volume: parseFloat(k[5]),
+                            isClosed: true
+                        };
+
+                        // Log detalhado para debug do candle exato
+                        if (candle.timestamp === timestamp) {
+                            console.log(`🔍 [API BINANCE] Candle buscado: ${new Date(timestamp).toLocaleString('pt-BR')}`);
+                            console.log(`   📊 OHLC: O=${candle.open.toFixed(2)} H=${candle.high.toFixed(2)} L=${candle.low.toFixed(2)} C=${candle.close.toFixed(2)}`);
+                            console.log(`   🎨 Cor API: ${candle.close > candle.open ? 'VERDE 🟢' : candle.close < candle.open ? 'VERMELHO 🔴' : 'DOJI ⚪'}`);
+                            console.log(`   ⚠️ Confira este candle no gráfico da Binance Futures!`);
+                        }
+
+                        return candle;
+                    });
 
                     // Adicionar candles ao histórico se ainda não existirem
                     candles.forEach(candle => {
