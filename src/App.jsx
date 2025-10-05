@@ -55,46 +55,72 @@ window.clearAllData = async function(options = {}) {
                 console.log(`   ✅ ${deleted} sinais removidos`);
             }
 
-            // Limpar ML weights (usa timestamp ao invés de id)
-            const { error: weightsError, count: weightsCount } = await window.supabase
-                .from('ml_weights_evolution')
-                .delete()
-                .gte('timestamp', 0);
+            // Limpar ML weights - buscar e deletar todos
+            try {
+                const { data: weights } = await window.supabase
+                    .from('ml_weights_evolution')
+                    .select('timestamp');
 
-            if (weightsError) {
-                console.warn(`   ⚠️ Erro ao limpar ml_weights_evolution: ${weightsError.message}`);
-            } else {
-                const deleted = weightsCount || 0;
-                totalDeleted += deleted;
-                console.log(`   ✅ ${deleted} registros ML removidos`);
+                if (weights && weights.length > 0) {
+                    for (const w of weights) {
+                        await window.supabase
+                            .from('ml_weights_evolution')
+                            .delete()
+                            .eq('timestamp', w.timestamp);
+                    }
+                    totalDeleted += weights.length;
+                    console.log(`   ✅ ${weights.length} registros ML removidos`);
+                } else {
+                    console.log(`   ✅ 0 registros ML removidos`);
+                }
+            } catch (e) {
+                console.warn(`   ⚠️ Erro ao limpar ml_weights_evolution: ${e.message}`);
             }
 
-            // Limpar audit logs (usa timestamp ao invés de id)
-            const { error: auditError, count: auditCount } = await window.supabase
-                .from('audit_logs')
-                .delete()
-                .gte('timestamp', 0);
+            // Limpar audit logs - buscar e deletar todos
+            try {
+                const { data: logs } = await window.supabase
+                    .from('audit_logs')
+                    .select('signal_id, generated_at');
 
-            if (auditError) {
-                console.warn(`   ⚠️ Erro ao limpar audit_logs: ${auditError.message}`);
-            } else {
-                const deleted = auditCount || 0;
-                totalDeleted += deleted;
-                console.log(`   ✅ ${deleted} logs removidos`);
+                if (logs && logs.length > 0) {
+                    for (const log of logs) {
+                        await window.supabase
+                            .from('audit_logs')
+                            .delete()
+                            .eq('signal_id', log.signal_id)
+                            .eq('generated_at', log.generated_at);
+                    }
+                    totalDeleted += logs.length;
+                    console.log(`   ✅ ${logs.length} logs removidos`);
+                } else {
+                    console.log(`   ✅ 0 logs removidos`);
+                }
+            } catch (e) {
+                console.warn(`   ⚠️ Erro ao limpar audit_logs: ${e.message}`);
             }
 
-            // Limpar performance stats (usa timestamp ao invés de id)
-            const { error: statsError, count: statsCount } = await window.supabase
-                .from('performance_stats')
-                .delete()
-                .gte('timestamp', 0);
+            // Limpar performance stats - buscar e deletar todos
+            try {
+                const { data: stats } = await window.supabase
+                    .from('performance_stats')
+                    .select('stat_type, stat_key');
 
-            if (statsError) {
-                console.warn(`   ⚠️ Erro ao limpar performance_stats: ${statsError.message}`);
-            } else {
-                const deleted = statsCount || 0;
-                totalDeleted += deleted;
-                console.log(`   ✅ ${deleted} estatísticas removidas`);
+                if (stats && stats.length > 0) {
+                    for (const stat of stats) {
+                        await window.supabase
+                            .from('performance_stats')
+                            .delete()
+                            .eq('stat_type', stat.stat_type)
+                            .eq('stat_key', stat.stat_key);
+                    }
+                    totalDeleted += stats.length;
+                    console.log(`   ✅ ${stats.length} estatísticas removidas`);
+                } else {
+                    console.log(`   ✅ 0 estatísticas removidas`);
+                }
+            } catch (e) {
+                console.warn(`   ⚠️ Erro ao limpar performance_stats: ${e.message}`);
             }
 
             results.supabase.success = true;
