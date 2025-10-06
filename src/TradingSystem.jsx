@@ -5098,7 +5098,7 @@ useEffect(() => {
                         safetyTimeout: null
                     });
 
-                    const entryTimer = setTimeout(() => {
+                    const entryTimer = setTimeout(async () => {
                         // 🔗 PRIORIDADE 1: Usar saída do sinal anterior (se disponível e consecutivo)
                         const timeSinceLastExit = lastConfirmedExit.current.timestamp
                             ? (entryTimestamp - lastConfirmedExit.current.timestamp)
@@ -5136,78 +5136,98 @@ useEffect(() => {
                                 )
                             );
                         } else {
-                            // 🔗 PRIORIDADE 2: Buscar candle de entrada
-                            const entryCandle = marketDataRef.current?.getCandleByTimestamp(entryTimestamp);
+                            // 🔗 PRIORIDADE 2: Buscar via API REST o candle EXATO de entrada
+                            console.log(`🔍 [ENTRY] Buscando candle de entrada via API...`);
+                            console.log(`   ⏰ Timestamp buscado: ${new Date(entryTimestamp).toLocaleTimeString('pt-BR')} (${entryTimestamp})`);
 
-                            if (entryCandle) {
-                            // Usar OPEN do candle de entrada (preço real quando candle iniciou)
-                            entryCandleData = {
-                                timestamp: entryCandle.timestamp,
-                                open: entryCandle.open,  // 🎯 Preço REAL de entrada
-                                close: entryCandle.close,
-                                source: 'candle'
-                            };
-
-                            // ✅ Atualizar preço do sinal com o Open real
-                            signal.actualEntryPrice = entryCandle.open;
-                            signal.entryPriceUpdated = true;
-
-                            console.log(`✅ [ENTRY] Candle de entrada capturado`);
-                            console.log(`   📌 Timestamp: ${new Date(entryCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                            console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
-                            console.log(`   🎯 Open REAL: ${entryCandle.open.toFixed(2)}`);
-                            console.log(`   📊 Diferença: ${(entryCandle.open - signal.price).toFixed(2)} pts`);
-
-                            // Atualizar sinal na UI
-                            setSignals(prevSignals =>
-                                prevSignals.map(s =>
-                                    s.id === signal.id
-                                        ? { ...s, actualEntryPrice: entryCandle.open, entryPriceUpdated: true }
-                                        : s
-                                )
-                            );
-                        } else {
-                            // ⚠️ Fallback: Buscar Close do candle ANTERIOR
-                            // O Open do candle atual = Close do candle anterior
-                            const previousTimestamp = entryTimestamp - (5 * 60 * 1000); // 5 minutos antes
-                            const previousCandle = marketDataRef.current?.getCandleByTimestamp(previousTimestamp);
-
-                            if (previousCandle) {
-                                // Usar Close do candle anterior como entrada real
-                                entryCandleData = {
-                                    timestamp: entryTimestamp,
-                                    open: previousCandle.close,  // 🎯 Close anterior = Open atual
-                                    close: previousCandle.close,
-                                    source: 'previous_candle'
-                                };
-
-                                signal.actualEntryPrice = previousCandle.close;
-                                signal.entryPriceUpdated = true;
-
-                                console.log(`✅ [ENTRY] Usando Close do candle anterior`);
-                                console.log(`   📌 Candle anterior: ${new Date(previousTimestamp).toLocaleTimeString('pt-BR')}`);
-                                console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
-                                console.log(`   🎯 Close anterior (= Open atual): ${previousCandle.close.toFixed(2)}`);
-                                console.log(`   📊 Diferença: ${(previousCandle.close - signal.price).toFixed(2)} pts`);
-
-                                // Atualizar sinal na UI
-                                setSignals(prevSignals =>
-                                    prevSignals.map(s =>
-                                        s.id === signal.id
-                                            ? { ...s, actualEntryPrice: previousCandle.close, entryPriceUpdated: true }
-                                            : s
-                                    )
+                            try {
+                                const entryCandle = await marketDataRef.current?.fetchSpecificCandleFromREST(
+                                    signal.symbol.toUpperCase(),
+                                    '5m',
+                                    entryTimestamp
                                 );
-                            } else {
-                                // Último fallback: usar preço previsto
+
+                                if (entryCandle && entryCandle.timestamp === entryTimestamp) {
+                                    // ✅ Candle EXATO encontrado
+                                    entryCandleData = {
+                                        timestamp: entryCandle.timestamp,
+                                        open: entryCandle.open,  // 🎯 Preço REAL de entrada
+                                        close: entryCandle.close,
+                                        source: 'rest_api'
+                                    };
+
+                                    signal.actualEntryPrice = entryCandle.open;
+                                    signal.entryPriceUpdated = true;
+
+                                    console.log(`✅ [ENTRY] Candle EXATO via REST API`);
+                                    console.log(`   📌 Timestamp: ${new Date(entryCandle.timestamp).toLocaleTimeString('pt-BR')}`);
+                                    console.log(`   📊 OHLC: O=${entryCandle.open.toFixed(2)} H=${entryCandle.high.toFixed(2)} L=${entryCandle.low.toFixed(2)} C=${entryCandle.close.toFixed(2)}`);
+                                    console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
+                                    console.log(`   🎯 Open REAL: ${entryCandle.open.toFixed(2)}`);
+                                    console.log(`   📊 Diferença: ${(entryCandle.open - signal.price).toFixed(2)} pts`);
+
+                                    // Atualizar sinal na UI
+                                    setSignals(prevSignals =>
+                                        prevSignals.map(s =>
+                                            s.id === signal.id
+                                                ? { ...s, actualEntryPrice: entryCandle.open, entryPriceUpdated: true }
+                                                : s
+                                        )
+                                    );
+                                } else {
+                                    // ⚠️ Fallback: Buscar Close do candle ANTERIOR
+                                    console.log(`⚠️ [ENTRY] Candle exato não encontrado, buscando candle anterior...`);
+                                    const previousTimestamp = entryTimestamp - (5 * 60 * 1000);
+                                    const previousCandle = await marketDataRef.current?.fetchSpecificCandleFromREST(
+                                        signal.symbol.toUpperCase(),
+                                        '5m',
+                                        previousTimestamp
+                                    );
+
+                                    if (previousCandle) {
+                                        // Usar Close do candle anterior como entrada real
+                                        entryCandleData = {
+                                            timestamp: entryTimestamp,
+                                            open: previousCandle.close,  // 🎯 Close anterior = Open atual
+                                            close: previousCandle.close,
+                                            source: 'previous_candle'
+                                        };
+
+                                        signal.actualEntryPrice = previousCandle.close;
+                                        signal.entryPriceUpdated = true;
+
+                                        console.log(`✅ [ENTRY] Usando Close do candle anterior (via REST)`);
+                                        console.log(`   📌 Candle anterior: ${new Date(previousTimestamp).toLocaleTimeString('pt-BR')}`);
+                                        console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
+                                        console.log(`   🎯 Close anterior (= Open atual): ${previousCandle.close.toFixed(2)}`);
+                                        console.log(`   📊 Diferença: ${(previousCandle.close - signal.price).toFixed(2)} pts`);
+
+                                        setSignals(prevSignals =>
+                                            prevSignals.map(s =>
+                                                s.id === signal.id
+                                                    ? { ...s, actualEntryPrice: previousCandle.close, entryPriceUpdated: true }
+                                                    : s
+                                            )
+                                        );
+                                    } else {
+                                        // Último fallback: usar preço previsto
+                                        entryCandleData = {
+                                            timestamp: entryTimestamp,
+                                            open: signal.price,
+                                            close: signal.price,
+                                            source: 'predicted'
+                                        };
+                                        console.log(`⚠️ [ENTRY] Usando preço previsto (nenhum candle disponível): ${signal.price.toFixed(2)}`);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error(`❌ [ENTRY] Erro ao buscar candle via REST:`, error);
                                 entryCandleData = {
                                     timestamp: entryTimestamp,
                                     open: signal.price,
                                     close: signal.price,
                                     source: 'predicted'
                                 };
-                                console.log(`⚠️ [ENTRY] Usando preço previsto (nenhum candle disponível): ${signal.price.toFixed(2)}`);
-                            }
                             }
                         }
 
@@ -5311,28 +5331,56 @@ useEffect(() => {
                             return;
                         }
 
-                        // ✅ LÓGICA MELHORADA DE OPÇÕES BINÁRIAS:
-                        // Comparar Open da Entrada vs Close da Expiração
-                        const entryOpen = entryCandleData.open;   // Open do candle de ENTRADA
-                        const expirationClose = expirationCandle.close; // Close do candle de EXPIRAÇÃO
-                        const variation = expirationClose - entryOpen; // Variação total
+                        // ✅ SISTEMA DUPLO DE VALIDAÇÃO
+                        const entryOpen = entryCandleData.open;
+                        const expirationClose = expirationCandle.close;
+                        const variation = expirationClose - entryOpen;
+                        const minVariation = 0.0001;
 
-                        // Para opções binárias, qualquer direção conta (não importa magnitude)
-                        // DOJI apenas se variação for exatamente zero ou quase zero (arredondamento)
-                        const minVariation = 0.0001; // Threshold mínimo absoluto (~0.0001 pts)
+                        // 🔍 VALIDAÇÃO 1: COR VISUAL DA API (PRINCIPAL - Fonte da Verdade)
+                        const expirationOpen = expirationCandle.open;
+                        const candleVariation = expirationClose - expirationOpen;
 
-                        const isCandleGreen = variation > minVariation;  // Verde = subiu desde entrada
-                        const isCandleRed = variation < -minVariation;   // Vermelho = caiu desde entrada
-                        const isDoji = Math.abs(variation) <= minVariation; // DOJI = variação zero
-                        const candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
+                        const apiColorGreen = candleVariation > minVariation;
+                        const apiColorRed = candleVariation < -minVariation;
+                        const apiColorDoji = Math.abs(candleVariation) <= minVariation;
+                        const apiColor = apiColorGreen ? 'VERDE' : apiColorRed ? 'VERMELHO' : 'DOJI';
 
-                        console.log(`🔍 [BINARY] Validação Open(Entrada) → Close(Expiração):`);
-                        console.log(`   📥 Entrada: ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`      Open: ${entryOpen.toFixed(2)}`);
-                        console.log(`   📤 Expiração: ${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`      Close: ${expirationClose.toFixed(2)}`);
-                        console.log(`   📊 Variação: ${variation.toFixed(2)} pts`);
-                        console.log(`   🎨 Resultado: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`\n🔍 [VALIDAÇÃO 1] COR VISUAL DA API (PRINCIPAL):`);
+                        console.log(`   📊 Candle Expiração: Open ${expirationOpen.toFixed(2)} → Close ${expirationClose.toFixed(2)}`);
+                        console.log(`   📏 Variação do candle: ${candleVariation.toFixed(2)} pts`);
+                        console.log(`   🎨 COR DA API: ${apiColor} ${apiColorGreen ? '🟢' : apiColorRed ? '🔴' : '⚪'}`);
+
+                        // 🔍 VALIDAÇÃO 2: CÁLCULO Open(Entrada) vs Close(Saída) (SECUNDÁRIA - Backup)
+                        const calcGreen = variation > minVariation;
+                        const calcRed = variation < -minVariation;
+                        const calcDoji = Math.abs(variation) <= minVariation;
+                        const calcColor = calcGreen ? 'VERDE' : calcRed ? 'VERMELHO' : 'DOJI';
+
+                        console.log(`\n🔍 [VALIDAÇÃO 2] CÁLCULO ENTRADA→SAÍDA (BACKUP):`);
+                        console.log(`   📥 Open Entrada: ${entryOpen.toFixed(2)} (${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')})`);
+                        console.log(`   📤 Close Saída: ${expirationClose.toFixed(2)} (${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')})`);
+                        console.log(`   📏 Variação total: ${variation.toFixed(2)} pts`);
+                        console.log(`   🎨 COR CALCULADA: ${calcColor} ${calcGreen ? '🟢' : calcRed ? '🔴' : '⚪'}`);
+
+                        // ⚠️ VERIFICAR DIVERGÊNCIA
+                        const hasDivergence = apiColor !== calcColor;
+
+                        if (hasDivergence) {
+                            console.warn(`\n⚠️⚠️⚠️ DIVERGÊNCIA DETECTADA!`);
+                            console.warn(`   🌐 API Binance: ${apiColor}`);
+                            console.warn(`   🧮 Calculado: ${calcColor}`);
+                            console.warn(`   ✅ USANDO: ${apiColor} (API prevalece)`);
+                            console.warn(`   📊 Open Entrada: ${entryOpen.toFixed(2)}`);
+                            console.warn(`   📊 Open Candle: ${expirationOpen.toFixed(2)}`);
+                            console.warn(`   📊 Close Candle: ${expirationClose.toFixed(2)}`);
+                        }
+
+                        // ✅ USAR COR DA API (PRIORIDADE)
+                        const isCandleGreen = apiColorGreen;
+                        const isCandleRed = apiColorRed;
+                        const isDoji = apiColorDoji;
+                        const candleColor = apiColor;
 
                         let result = null;
                         let pnl = 0;
