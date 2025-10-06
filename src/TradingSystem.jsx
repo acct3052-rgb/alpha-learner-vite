@@ -5236,29 +5236,39 @@ useEffect(() => {
                         showNotification(`✅ Entrada: ${signal.direction} @ ${displayPrice.toFixed(2)}`);
                     }, timeUntilEntry);
 
-                    // 🔄 MONITORAMENTO PRÉ-FECHAMENTO: Capturar preço atual 30s antes
-                    let currentExitPrice = null;
-                    const preCloseMonitoringTime = timeUntilExpiration - 30000; // 30s antes
+                    // 🎯 CAPTURA DA COR DO CANDLE: 10 segundos ANTES de fechar
+                    // Quando faltam 10s, o candle já tem sua cor quase definitiva
+                    let preCapturedCandle = null;
+                    const preCaptureTime = timeUntilExpiration - 10000; // 10s antes
 
-                    if (preCloseMonitoringTime > 0) {
+                    if (preCaptureTime > 0) {
                         setTimeout(() => {
-                            console.log(`📊 [PRE-CLOSE] Iniciando monitoramento de saída (30s antes)...`);
+                            console.log(`🎯 [PRE-CAPTURE] Capturando COR do candle 10s antes de fechar...`);
 
-                            // Monitorar a cada 5 segundos
-                            const monitorInterval = setInterval(() => {
-                                const liveCandle = marketDataRef.current?.currentCandle;
-                                if (liveCandle && liveCandle.timestamp === expirationTimestamp) {
-                                    currentExitPrice = liveCandle.close;
-                                    console.log(`📊 [PRE-CLOSE] Preço atual: ${currentExitPrice.toFixed(2)}`);
-                                }
-                            }, 5000);
+                            const liveCandle = marketDataRef.current?.currentCandle;
+                            if (liveCandle && liveCandle.timestamp === expirationTimestamp) {
+                                preCapturedCandle = {
+                                    timestamp: liveCandle.timestamp,
+                                    open: liveCandle.open,
+                                    close: liveCandle.close,
+                                    high: liveCandle.high,
+                                    low: liveCandle.low,
+                                    volume: liveCandle.volume,
+                                    captureTime: Date.now(),
+                                    source: 'pre_capture'
+                                };
 
-                            // Parar monitoramento após 30s (quando candle fecha)
-                            setTimeout(() => {
-                                clearInterval(monitorInterval);
-                                console.log(`✅ [PRE-CLOSE] Monitoramento concluído. Último preço: ${currentExitPrice?.toFixed(2) || 'N/A'}`);
-                            }, 30000);
-                        }, preCloseMonitoringTime);
+                                const variation = preCapturedCandle.close - preCapturedCandle.open;
+                                const color = variation > 0.0001 ? 'VERDE 🟢' : variation < -0.0001 ? 'VERMELHO 🔴' : 'DOJI ⚪';
+
+                                console.log(`🎯 [PRE-CAPTURE] Candle capturado:`);
+                                console.log(`   📊 OHLC: O=${preCapturedCandle.open.toFixed(2)} → C=${preCapturedCandle.close.toFixed(2)}`);
+                                console.log(`   🎨 COR: ${color}`);
+                                console.log(`   ⏰ Capturado em: ${new Date(preCapturedCandle.captureTime).toLocaleTimeString('pt-BR')}`);
+                            } else {
+                                console.warn(`⚠️ [PRE-CAPTURE] Candle de expiração não encontrado no currentCandle`);
+                            }
+                        }, preCaptureTime);
                     }
 
                     // Validar APÓS o candle de expiração fechar
@@ -5331,25 +5341,45 @@ useEffect(() => {
                             return;
                         }
 
-                        // ✅ SISTEMA DUPLO DE VALIDAÇÃO
+                        // ✅ SISTEMA TRIPLO DE VALIDAÇÃO COM PRÉ-CAPTURA
                         const entryOpen = entryCandleData.open;
-                        const expirationClose = expirationCandle.close;
-                        const variation = expirationClose - entryOpen;
                         const minVariation = 0.0001;
 
-                        // 🔍 VALIDAÇÃO 1: COR VISUAL DA API (PRINCIPAL - Fonte da Verdade)
-                        const expirationOpen = expirationCandle.open;
+                        // 🎯 PRIORIDADE 1: Usar PRE-CAPTURED candle (10s antes de fechar)
+                        let expirationOpen, expirationClose, candleSource;
+
+                        if (preCapturedCandle) {
+                            // ✅ Usar candle capturado ANTES de fechar (mais confiável)
+                            expirationOpen = preCapturedCandle.open;
+                            expirationClose = preCapturedCandle.close;
+                            candleSource = 'PRE-CAPTURED (10s antes)';
+
+                            console.log(`\n🎯 [VALIDAÇÃO PRE-CAPTURE] Usando candle capturado 10s antes:`);
+                            console.log(`   ⏰ Capturado em: ${new Date(preCapturedCandle.captureTime).toLocaleTimeString('pt-BR')}`);
+                            console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
+                        } else {
+                            // ⚠️ Fallback: usar candle fechado (pode ter mudado de cor)
+                            expirationOpen = expirationCandle.open;
+                            expirationClose = expirationCandle.close;
+                            candleSource = 'POST-CLOSE (após fechar)';
+
+                            console.log(`\n⚠️ [VALIDAÇÃO POST-CLOSE] Candle não foi pré-capturado, usando após fechar:`);
+                            console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
+                            console.warn(`   ⚠️ ATENÇÃO: Cor pode ter mudado após fechamento!`);
+                        }
+
+                        const variation = expirationClose - entryOpen;
                         const candleVariation = expirationClose - expirationOpen;
 
+                        // 🔍 VALIDAÇÃO 1: COR VISUAL DO CANDLE (PRINCIPAL - Fonte da Verdade)
                         const apiColorGreen = candleVariation > minVariation;
                         const apiColorRed = candleVariation < -minVariation;
                         const apiColorDoji = Math.abs(candleVariation) <= minVariation;
                         const apiColor = apiColorGreen ? 'VERDE' : apiColorRed ? 'VERMELHO' : 'DOJI';
 
-                        console.log(`\n🔍 [VALIDAÇÃO 1] COR VISUAL DA API (PRINCIPAL):`);
-                        console.log(`   📊 Candle Expiração: Open ${expirationOpen.toFixed(2)} → Close ${expirationClose.toFixed(2)}`);
+                        console.log(`\n🔍 [VALIDAÇÃO 1] COR VISUAL (${candleSource}):`);
                         console.log(`   📏 Variação do candle: ${candleVariation.toFixed(2)} pts`);
-                        console.log(`   🎨 COR DA API: ${apiColor} ${apiColorGreen ? '🟢' : apiColorRed ? '🔴' : '⚪'}`);
+                        console.log(`   🎨 COR: ${apiColor} ${apiColorGreen ? '🟢' : apiColorRed ? '🔴' : '⚪'}`);
 
                         // 🔍 VALIDAÇÃO 2: CÁLCULO Open(Entrada) vs Close(Saída) (SECUNDÁRIA - Backup)
                         const calcGreen = variation > minVariation;
@@ -5359,7 +5389,7 @@ useEffect(() => {
 
                         console.log(`\n🔍 [VALIDAÇÃO 2] CÁLCULO ENTRADA→SAÍDA (BACKUP):`);
                         console.log(`   📥 Open Entrada: ${entryOpen.toFixed(2)} (${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')})`);
-                        console.log(`   📤 Close Saída: ${expirationClose.toFixed(2)} (${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')})`);
+                        console.log(`   📤 Close Saída: ${expirationClose.toFixed(2)} (${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')})`);
                         console.log(`   📏 Variação total: ${variation.toFixed(2)} pts`);
                         console.log(`   🎨 COR CALCULADA: ${calcColor} ${calcGreen ? '🟢' : calcRed ? '🔴' : '⚪'}`);
 
@@ -5368,15 +5398,15 @@ useEffect(() => {
 
                         if (hasDivergence) {
                             console.warn(`\n⚠️⚠️⚠️ DIVERGÊNCIA DETECTADA!`);
-                            console.warn(`   🌐 API Binance: ${apiColor}`);
-                            console.warn(`   🧮 Calculado: ${calcColor}`);
-                            console.warn(`   ✅ USANDO: ${apiColor} (API prevalece)`);
+                            console.warn(`   🎨 Cor Visual: ${apiColor}`);
+                            console.warn(`   🧮 Cor Calculada: ${calcColor}`);
+                            console.warn(`   ✅ USANDO: ${apiColor} (cor visual prevalece)`);
                             console.warn(`   📊 Open Entrada: ${entryOpen.toFixed(2)}`);
                             console.warn(`   📊 Open Candle: ${expirationOpen.toFixed(2)}`);
                             console.warn(`   📊 Close Candle: ${expirationClose.toFixed(2)}`);
                         }
 
-                        // ✅ USAR COR DA API (PRIORIDADE)
+                        // ✅ USAR COR VISUAL (PRIORIDADE)
                         const isCandleGreen = apiColorGreen;
                         const isCandleRed = apiColorRed;
                         const isDoji = apiColorDoji;
