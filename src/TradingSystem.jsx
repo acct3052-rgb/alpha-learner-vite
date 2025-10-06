@@ -5702,8 +5702,8 @@ useEffect(() => {
                             if (hasReliableEntry) {
                                 // ✅ Entrada confiável: TREINAR ML
                                 console.log(`🧠 [ML] Aprendendo com preços REAIS (${entryCandleData.source}):`);
-                                console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryOpen.toFixed(2)}`);
-                                console.log(`   Erro de previsão: ${(entryOpen - signal.price).toFixed(2)} pts`);
+                                console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryCandleData.open.toFixed(2)}`);
+                                console.log(`   Erro de previsão: ${(entryCandleData.open - signal.price).toFixed(2)} pts`);
 
                                 alphaEngine.learnFromTrade(signal, result);
                             } else {
