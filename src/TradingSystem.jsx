@@ -5135,20 +5135,67 @@ useEffect(() => {
                     }
                 };
 
-                // ⚡ EXECUTAR IMEDIATAMENTE ao ativar
-                console.log('🚀 Alpha Engine ativado! Executando primeira análise...');
-                runAnalysis();
+                // ⚡ INICIALIZAÇÃO INTELIGENTE
+                console.log('🚀 Alpha Engine ativado! Inicializando análise...');
 
-                // 🔄 Depois continuar com intervalo de 5 minutos
-                const interval = setInterval(runAnalysis, 300000); // 5 minutos
+                const candleInfo = getCandleInfo();
+                const MIN_TIME_BEFORE_CLOSE = 60; // 60 segundos
+
+                if (candleInfo.secondsUntilClose >= MIN_TIME_BEFORE_CLOSE) {
+                    // ✅ Tempo suficiente no candle atual - executar imediatamente
+                    console.log(`✅ Tempo suficiente no candle atual (${candleInfo.secondsUntilClose}s). Executando análise...`);
+                    runAnalysis();
+                } else {
+                    // ⏳ Muito próximo do fechamento - aguardar próximo candle
+                    const waitTime = candleInfo.timeUntilClose + 5000; // Aguardar candle fechar + 5s buffer
+                    console.log(`⏳ Muito próximo do fechamento (${candleInfo.secondsUntilClose}s < 60s)`);
+                    console.log(`⏳ Aguardando próximo candle em ${Math.floor(waitTime/1000)}s...`);
+
+                    setTimeout(() => {
+                        console.log('✅ Novo candle iniciado! Executando primeira análise...');
+                        runAnalysis();
+                    }, waitTime);
+                }
+
+                // 🔄 Loop contínuo: executar a cada novo candle (5 minutos)
+                // Sincronizar com os candles M5 (00:00, 00:05, 00:10, etc)
+                const now = new Date();
+                const nextCandleTime = new Date(candleInfo.nextCandle);
+                nextCandleTime.setSeconds(30); // Executar 30s após o candle abrir
+
+                const initialDelay = nextCandleTime - now;
 
                 console.log('🔄 Sistema de análise iniciado');
-                console.log('   ⏱️ Intervalo: 5 minutos (300s)');
+                console.log(`   ⏱️ Primeira análise periódica em: ${Math.floor(initialDelay/1000)}s`);
+                console.log('   🔄 Intervalo: 5 minutos (sincronizado com candles M5)');
                 console.log('   ⚠️ Tempo mínimo antes do fechamento: 60s');
                 console.log('   🚫 Filtro de duplicados: ATIVO');
 
+                // Primeiro timer para sincronizar com os candles
+                const syncTimer = setTimeout(() => {
+                    runAnalysis();
+                    // Depois continuar com intervalo fixo de 5min
+                    const interval = setInterval(runAnalysis, 300000);
+
+                    // Guardar interval no ref para limpar depois
+                    if (window._analysisInterval) clearInterval(window._analysisInterval);
+                    window._analysisInterval = interval;
+                }, initialDelay);
+
+                // Guardar syncTimer para cleanup
+                if (window._analysisSyncTimer) clearTimeout(window._analysisSyncTimer);
+                window._analysisSyncTimer = syncTimer;
+
                 return () => {
-                    clearInterval(interval);
+                    // Limpar todos os timers
+                    if (window._analysisInterval) {
+                        clearInterval(window._analysisInterval);
+                        window._analysisInterval = null;
+                    }
+                    if (window._analysisSyncTimer) {
+                        clearTimeout(window._analysisSyncTimer);
+                        window._analysisSyncTimer = null;
+                    }
                     console.log('⏹️ Sistema de análise parado');
                 };
             }, [isActive, marketData, alphaEngine, apiManager, dataSource, orderExecutor]); // Fixed: removed minScore, mode, riskAmount (using refs)
