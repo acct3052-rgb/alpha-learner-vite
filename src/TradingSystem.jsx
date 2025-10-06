@@ -5595,8 +5595,9 @@ useEffect(() => {
                         }
 
                         // ✅ Verificar se entrada é CONFIÁVEL para ML
+                        // Aceitar todas as fontes EXCETO 'predicted' (que é apenas estimativa)
                         const hasReliableEntry = entryCandleData.source === 'chained' ||
-                                                 entryCandleData.source === 'candle' ||
+                                                 entryCandleData.source === 'rest_api' ||
                                                  entryCandleData.source === 'previous_candle';
 
                         // ✅ Atualizar ML APENAS com preços REAIS confiáveis
