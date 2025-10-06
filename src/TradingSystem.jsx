@@ -5123,14 +5123,47 @@ useEffect(() => {
                                 )
                             );
                         } else {
-                            // Fallback: usar preço previsto do sinal
-                            entryCandleData = {
-                                timestamp: entryTimestamp,
-                                open: signal.price,
-                                close: signal.price,
-                                source: 'signal'
-                            };
-                            console.log(`📊 [ENTRY] Usando preço previsto: ${signal.price.toFixed(6)}`);
+                            // ⚠️ Fallback: Buscar Close do candle ANTERIOR
+                            // O Open do candle atual = Close do candle anterior
+                            const previousTimestamp = entryTimestamp - (5 * 60 * 1000); // 5 minutos antes
+                            const previousCandle = marketDataRef.current?.getCandleByTimestamp(previousTimestamp);
+
+                            if (previousCandle) {
+                                // Usar Close do candle anterior como entrada real
+                                entryCandleData = {
+                                    timestamp: entryTimestamp,
+                                    open: previousCandle.close,  // 🎯 Close anterior = Open atual
+                                    close: previousCandle.close,
+                                    source: 'previous_candle'
+                                };
+
+                                signal.actualEntryPrice = previousCandle.close;
+                                signal.entryPriceUpdated = true;
+
+                                console.log(`✅ [ENTRY] Usando Close do candle anterior`);
+                                console.log(`   📌 Candle anterior: ${new Date(previousTimestamp).toLocaleTimeString('pt-BR')}`);
+                                console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
+                                console.log(`   🎯 Close anterior (= Open atual): ${previousCandle.close.toFixed(2)}`);
+                                console.log(`   📊 Diferença: ${(previousCandle.close - signal.price).toFixed(2)} pts`);
+
+                                // Atualizar sinal na UI
+                                setSignals(prevSignals =>
+                                    prevSignals.map(s =>
+                                        s.id === signal.id
+                                            ? { ...s, actualEntryPrice: previousCandle.close, entryPriceUpdated: true }
+                                            : s
+                                    )
+                                );
+                            } else {
+                                // Último fallback: usar preço previsto
+                                entryCandleData = {
+                                    timestamp: entryTimestamp,
+                                    open: signal.price,
+                                    close: signal.price,
+                                    source: 'predicted'
+                                };
+                                console.log(`⚠️ [ENTRY] Usando preço previsto (nenhum candle disponível): ${signal.price.toFixed(2)}`);
+                            }
                         }
 
                         // Notificar execução com preço real
