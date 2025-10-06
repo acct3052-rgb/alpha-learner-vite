@@ -5566,18 +5566,23 @@ useEffect(() => {
                         signal.pnl = pnl;
                         signal.finalPrice = expirationClose;
 
-                        // 💾 PERSISTIR NO SUPABASE IMEDIATAMENTE
-                        if (window.memoryDB) {
-                            try {
+                        // 🎯 IMPORTANTE: Resultado foi calculado com sucesso
+                        // Operações abaixo podem falhar, mas NÃO devem sobrescrever o resultado
+
+                        // 💾 PERSISTIR NO SUPABASE
+                        try {
+                            if (window.memoryDB) {
                                 await window.memoryDB.saveSignal(signal);
                                 console.log('💾 Status do sinal atualizado no Supabase:', signal.id, '->', result);
-                            } catch (error) {
-                                console.error('❌ Erro ao salvar status no Supabase:', error);
                             }
+                        } catch (error) {
+                            console.error('❌ Erro ao salvar status no Supabase:', error);
+                            // ✅ Continua - não afeta resultado calculado
                         }
 
-                        if (window.auditSystemRef) {
-                            try {
+                        // 📊 ATUALIZAR AUDITORIA
+                        try {
+                            if (window.auditSystemRef) {
                                 window.auditSystemRef.updateSignalOutcome(
                                     signal.id,
                                     result,
@@ -5585,92 +5590,126 @@ useEffect(() => {
                                     pnl,
                                     signal.executionDetails
                                 );
-                            } catch (error) {
-                                console.error('❌ [BINARY] Erro ao atualizar auditoria:', error);
                             }
+                        } catch (error) {
+                            console.error('❌ [BINARY] Erro ao atualizar auditoria:', error);
+                            // ✅ Continua - não afeta resultado calculado
                         }
 
-                        if (orderExecutorRef.current && signal.executed) {
-                            orderExecutorRef.current.closePosition(signal.id, result, pnl);
-                        }
-
-                        // ✅ Verificar se entrada é CONFIÁVEL para ML
-                        // Aceitar todas as fontes EXCETO 'predicted' (que é apenas estimativa)
-                        const hasReliableEntry = entryCandleData.source === 'chained' ||
-                                                 entryCandleData.source === 'rest_api' ||
-                                                 entryCandleData.source === 'previous_candle';
-
-                        // ✅ Atualizar ML APENAS com preços REAIS confiáveis
-                        if (alphaEngine && result !== 'EXPIRADO' && result !== 'EMPATE') {
-                            // Dados do candle de ENTRADA (preço real de entrada)
-                            signal.entryCandle = {
-                                timestamp: entryCandleData.timestamp,
-                                open: entryCandleData.open,  // 🎯 Preço REAL de entrada
-                                close: entryCandleData.close,
-                                source: entryCandleData.source
-                            };
-
-                            // Dados do candle de EXPIRAÇÃO (preço real de saída)
-                            signal.expirationCandle = {
-                                timestamp: expirationTimestamp,
-                                open: expirationOpen,
-                                close: expirationClose,  // 🎯 Preço REAL de saída
-                                high: expirationCandle.high,
-                                low: expirationCandle.low,
-                                color: candleColor,
-                                isGreen: isCandleGreen,
-                                isRed: isCandleRed,
-                                bodySize: Math.abs(candleVariation), // Variação do candle (Open→Close)
-                                variation: candleVariation  // 🎯 Variação do candle
-                            };
-
-                            // Preços reais para ML
-                            signal.realEntryPrice = entryCandleData.open;
-                            signal.realExitPrice = expirationClose;
-                            signal.realPnL = pnl;
-                            signal.predictedPrice = signal.price; // Guardar previsão original
-
-                            if (hasReliableEntry) {
-                                // ✅ Entrada confiável: TREINAR ML
-                                console.log(`🧠 [ML] Aprendendo com preços REAIS (${entryCandleData.source}):`);
-                                console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryCandleData.open.toFixed(2)}`);
-                                console.log(`   Erro de previsão: ${(entryCandleData.open - signal.price).toFixed(2)} pts`);
-
-                                alphaEngine.learnFromTrade(signal, result);
-                            } else {
-                                // ⚠️ Entrada NÃO confiável (gap): NÃO treinar, mas saída serve para próximo
-                                console.log(`⚠️ [ML] SKIP - Entrada não confiável (${entryCandleData.source})`);
-                                console.log(`   Validação: ${result} | Saída: ${expirationClose.toFixed(2)}`);
-                                console.log(`   💡 Saída salva para encadear próximo sinal!`);
+                        // 🔄 FECHAR POSIÇÃO (se executada)
+                        try {
+                            if (orderExecutorRef.current && signal.executed) {
+                                orderExecutorRef.current.closePosition(signal.id, result, pnl);
                             }
+                        } catch (error) {
+                            console.error('❌ Erro ao fechar posição:', error);
+                            // ✅ Continua - não afeta resultado calculado
                         }
 
-                        // Atualizar UI
-                        setSignals(prevSignals =>
-                            prevSignals.map(s =>
-                                s.id === signal.id
-                                    ? { ...s, status: result, pnl, finalPrice: expirationClose }
-                                    : s
-                            )
-                        );
+                        // 🧠 TREINAR ML
+                        try {
+                            // ✅ Verificar se entrada é CONFIÁVEL para ML
+                            // Aceitar todas as fontes EXCETO 'predicted' (que é apenas estimativa)
+                            const hasReliableEntry = entryCandleData.source === 'chained' ||
+                                                     entryCandleData.source === 'rest_api' ||
+                                                     entryCandleData.source === 'previous_candle';
 
-                        // Notificar
-                        showNotification(
-                            result === 'ACERTO'
-                                ? `✅ Opção binária: +${formatBRL(pnl)}`
-                                : result === 'EMPATE'
-                                ? `⚖️ Empate: Candle DOJI (${formatBRL(pnl)})`
-                                : `❌ Opção binária: ${formatBRL(pnl)}`
-                        );
+                            // ✅ Atualizar ML APENAS com preços REAIS confiáveis
+                            if (alphaEngine && result !== 'EXPIRADO' && result !== 'EMPATE') {
+                                // Dados do candle de ENTRADA (preço real de entrada)
+                                signal.entryCandle = {
+                                    timestamp: entryCandleData.timestamp,
+                                    open: entryCandleData.open,  // 🎯 Preço REAL de entrada
+                                    close: entryCandleData.close,
+                                    source: entryCandleData.source
+                                };
+
+                                // Dados do candle de EXPIRAÇÃO (preço real de saída)
+                                signal.expirationCandle = {
+                                    timestamp: expirationTimestamp,
+                                    open: expirationOpen,
+                                    close: expirationClose,  // 🎯 Preço REAL de saída
+                                    high: expirationCandle.high,
+                                    low: expirationCandle.low,
+                                    color: candleColor,
+                                    isGreen: isCandleGreen,
+                                    isRed: isCandleRed,
+                                    bodySize: Math.abs(candleVariation), // Variação do candle (Open→Close)
+                                    variation: candleVariation  // 🎯 Variação do candle
+                                };
+
+                                // Preços reais para ML
+                                signal.realEntryPrice = entryCandleData.open;
+                                signal.realExitPrice = expirationClose;
+                                signal.realPnL = pnl;
+                                signal.predictedPrice = signal.price; // Guardar previsão original
+
+                                if (hasReliableEntry) {
+                                    // ✅ Entrada confiável: TREINAR ML
+                                    console.log(`🧠 [ML] Aprendendo com preços REAIS (${entryCandleData.source}):`);
+                                    console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryCandleData.open.toFixed(2)}`);
+                                    console.log(`   Erro de previsão: ${(entryCandleData.open - signal.price).toFixed(2)} pts`);
+
+                                    alphaEngine.learnFromTrade(signal, result);
+                                } else {
+                                    // ⚠️ Entrada NÃO confiável: NÃO treinar, mas saída serve para próximo
+                                    console.log(`⚠️ [ML] SKIP - Entrada não confiável (${entryCandleData.source})`);
+                                    console.log(`   Validação: ${result} | Saída: ${expirationClose.toFixed(2)}`);
+                                    console.log(`   💡 Saída salva para encadear próximo sinal!`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('❌ Erro ao treinar ML:', error);
+                            // ✅ Continua - não afeta resultado calculado
+                        }
+
+                        // 🖥️ ATUALIZAR UI
+                        try {
+                            setSignals(prevSignals =>
+                                prevSignals.map(s =>
+                                    s.id === signal.id
+                                        ? { ...s, status: result, pnl, finalPrice: expirationClose }
+                                        : s
+                                )
+                            );
+                        } catch (error) {
+                            console.error('❌ Erro ao atualizar UI:', error);
+                            // ✅ Continua - não afeta resultado calculado
+                        }
+
+                        // 🔔 NOTIFICAR
+                        try {
+                            showNotification(
+                                result === 'ACERTO'
+                                    ? `✅ Opção binária: +${formatBRL(pnl)}`
+                                    : result === 'EMPATE'
+                                    ? `⚖️ Empate: Candle DOJI (${formatBRL(pnl)})`
+                                    : `❌ Opção binária: ${formatBRL(pnl)}`
+                            );
+                        } catch (error) {
+                            console.error('❌ Erro ao notificar:', error);
+                            // ✅ Continua - não afeta resultado calculado
+                        }
 
                         // 🧹 AUTO-CLEANUP: Remover sinal confirmado após 5 segundos
-                        setTimeout(() => {
-                            console.log(`🧹 Auto-removendo sinal confirmado: ${signal.id}`);
-                            dismissSignal(signal.id);
-                        }, 5000);
+                        try {
+                            setTimeout(() => {
+                                console.log(`🧹 Auto-removendo sinal confirmado: ${signal.id}`);
+                                dismissSignal(signal.id);
+                            }, 5000);
+                        } catch (error) {
+                            console.error('❌ Erro ao agendar cleanup:', error);
+                            // ✅ Continua - não afeta resultado calculado
+                        }
 
-                        if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
-                            window.telegramNotifier.notifyResult(signal, result, pnl);
+                        // 📱 TELEGRAM
+                        try {
+                            if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
+                                window.telegramNotifier.notifyResult(signal, result, pnl);
+                            }
+                        } catch (error) {
+                            console.error('❌ Erro ao notificar Telegram:', error);
+                            // ✅ Continua - não afeta resultado calculado
                         }
                         } catch (error) {
                             console.error('❌ [BINARY] Erro na verificação do sinal:', error);
@@ -5681,11 +5720,35 @@ useEffect(() => {
                             // Limpar timer mesmo com erro
                             verificationTimers.current.delete(signal.id);
 
-                            // Marcar como EXPIRADO em caso de erro
-                            try {
-                                verifySignalOutcome(signal, 'EXPIRADO', 0, null);
-                            } catch (innerError) {
-                                console.error('❌ Erro ao marcar sinal como expirado:', innerError);
+                            // ⚠️ IMPORTANTE: Só marcar como EXPIRADO se o resultado ainda NÃO foi calculado
+                            // Se signal.status já foi definido, significa que o erro aconteceu DEPOIS do cálculo
+                            // Nesses casos, MANTER o resultado calculado (pode ser ACERTO, ERRO ou EMPATE)
+                            if (!signal.status || signal.status === 'PENDENTE') {
+                                // Resultado ainda não foi calculado - erro aconteceu ANTES da validação
+                                console.warn('⚠️ Erro aconteceu ANTES de calcular resultado - marcando como EXPIRADO');
+                                try {
+                                    verifySignalOutcome(signal, 'EXPIRADO', 0, null);
+                                } catch (innerError) {
+                                    console.error('❌ Erro ao marcar sinal como expirado:', innerError);
+                                }
+                            } else {
+                                // Resultado JÁ foi calculado - erro aconteceu em operação secundária (ML, UI, etc)
+                                console.warn(`⚠️ Erro aconteceu APÓS calcular resultado (${signal.status}) - MANTENDO resultado correto`);
+                                console.warn('   O erro foi em operação secundária (Supabase, ML, UI, etc)');
+                                console.warn(`   ✅ Resultado preservado: ${signal.status} | P&L: ${signal.pnl}`);
+
+                                // Atualizar UI mesmo com erro nas operações secundárias
+                                try {
+                                    setSignals(prevSignals =>
+                                        prevSignals.map(s =>
+                                            s.id === signal.id
+                                                ? { ...s, status: signal.status, pnl: signal.pnl, finalPrice: signal.finalPrice }
+                                                : s
+                                        )
+                                    );
+                                } catch (uiError) {
+                                    console.error('❌ Erro ao atualizar UI no catch:', uiError);
+                                }
                             }
                         }
                     }, timeUntilExpiration + bufferTime); // Aguardar expiração + buffer de 5s
