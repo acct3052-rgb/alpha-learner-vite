@@ -5140,38 +5140,54 @@ useEffect(() => {
 
                 const candleInfo = getCandleInfo();
                 const MIN_TIME_BEFORE_CLOSE = 60; // 60 segundos
+                const now = new Date();
+
+                let firstRunDelay = 0;
+                let shouldRunNow = false;
 
                 if (candleInfo.secondsUntilClose >= MIN_TIME_BEFORE_CLOSE) {
                     // ✅ Tempo suficiente no candle atual - executar imediatamente
                     console.log(`✅ Tempo suficiente no candle atual (${candleInfo.secondsUntilClose}s). Executando análise...`);
-                    runAnalysis();
+                    shouldRunNow = true;
+                    firstRunDelay = 0;
                 } else {
                     // ⏳ Muito próximo do fechamento - aguardar próximo candle
                     const waitTime = candleInfo.timeUntilClose + 5000; // Aguardar candle fechar + 5s buffer
                     console.log(`⏳ Muito próximo do fechamento (${candleInfo.secondsUntilClose}s < 60s)`);
                     console.log(`⏳ Aguardando próximo candle em ${Math.floor(waitTime/1000)}s...`);
-
-                    setTimeout(() => {
-                        console.log('✅ Novo candle iniciado! Executando primeira análise...');
-                        runAnalysis();
-                    }, waitTime);
+                    firstRunDelay = waitTime;
                 }
 
-                // 🔄 Loop contínuo: executar a cada novo candle (5 minutos)
-                // Sincronizar com os candles M5 (00:00, 00:05, 00:10, etc)
-                const now = new Date();
-                const nextCandleTime = new Date(candleInfo.nextCandle);
-                nextCandleTime.setSeconds(30); // Executar 30s após o candle abrir
-
-                const initialDelay = nextCandleTime - now;
-
                 console.log('🔄 Sistema de análise iniciado');
-                console.log(`   ⏱️ Primeira análise periódica em: ${Math.floor(initialDelay/1000)}s`);
                 console.log('   🔄 Intervalo: 5 minutos (sincronizado com candles M5)');
                 console.log('   ⚠️ Tempo mínimo antes do fechamento: 60s');
                 console.log('   🚫 Filtro de duplicados: ATIVO');
 
-                // Primeiro timer para sincronizar com os candles
+                // Executar primeira análise
+                if (shouldRunNow) {
+                    runAnalysis();
+                } else {
+                    setTimeout(() => {
+                        console.log('✅ Novo candle iniciado! Executando primeira análise...');
+                        runAnalysis();
+                    }, firstRunDelay);
+                }
+
+                // 🔄 Agendar loop periódico sincronizado com candles M5
+                // Calcula quando será o próximo "momento de análise" (30s após candle abrir)
+                const nextCandleTime = new Date(candleInfo.nextCandle);
+                nextCandleTime.setSeconds(30);
+
+                // Se já executamos agora, próxima análise é no PRÓXIMO candle (5min)
+                if (shouldRunNow) {
+                    nextCandleTime.setMinutes(nextCandleTime.getMinutes() + 5);
+                }
+
+                const periodicDelay = nextCandleTime - now;
+
+                console.log(`   ⏱️ Próxima análise periódica em: ${Math.floor(periodicDelay/1000)}s (${nextCandleTime.toLocaleTimeString('pt-BR')})`);
+
+                // Timer para iniciar o loop periódico
                 const syncTimer = setTimeout(() => {
                     runAnalysis();
                     // Depois continuar com intervalo fixo de 5min
@@ -5180,7 +5196,7 @@ useEffect(() => {
                     // Guardar interval no ref para limpar depois
                     if (window._analysisInterval) clearInterval(window._analysisInterval);
                     window._analysisInterval = interval;
-                }, initialDelay);
+                }, periodicDelay);
 
                 // Guardar syncTimer para cleanup
                 if (window._analysisSyncTimer) clearTimeout(window._analysisSyncTimer);
