@@ -5389,8 +5389,9 @@ useEffect(() => {
                             return;
                         }
 
-                        // ✅ SISTEMA DE VALIDAÇÃO COM DUPLA CAPTURA
-                        const entryOpen = entryCandleData.open;
+                        // ✅ VALIDAÇÃO ÚNICA: COR DO CANDLE DE EXPIRAÇÃO
+                        // Para opções binárias M5, a COR é determinada APENAS pelo candle de expiração
+                        // Open → Close do candle = cor do resultado
                         const minVariation = 0.0001;
 
                         // 🎯 PRIORIDADE DE USO:
@@ -5429,49 +5430,30 @@ useEffect(() => {
                             console.warn(`   ⚠️⚠️⚠️ ATENÇÃO: Cor pode ter mudado após fechamento!`);
                         }
 
-                        const variation = expirationClose - entryOpen;
+                        // 🎨 DETERMINAR COR DO CANDLE (Open → Close do candle de expiração)
                         const candleVariation = expirationClose - expirationOpen;
+                        const isCandleGreen = candleVariation > minVariation;
+                        const isCandleRed = candleVariation < -minVariation;
+                        const isDoji = Math.abs(candleVariation) <= minVariation;
+                        const candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
 
-                        // 🔍 VALIDAÇÃO 1: COR VISUAL DO CANDLE (PRINCIPAL - Fonte da Verdade)
-                        const apiColorGreen = candleVariation > minVariation;
-                        const apiColorRed = candleVariation < -minVariation;
-                        const apiColorDoji = Math.abs(candleVariation) <= minVariation;
-                        const apiColor = apiColorGreen ? 'VERDE' : apiColorRed ? 'VERMELHO' : 'DOJI';
+                        console.log(`\n🎨 [COR DO CANDLE] ${candleSource}:`);
+                        console.log(`   📊 Candle: ${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')}`);
+                        console.log(`   📥 Open: ${expirationOpen.toFixed(2)}`);
+                        console.log(`   📤 Close: ${expirationClose.toFixed(2)}`);
+                        console.log(`   📏 Variação: ${candleVariation.toFixed(2)} pts`);
+                        console.log(`   🎨 RESULTADO: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
 
-                        console.log(`\n🔍 [VALIDAÇÃO 1] COR VISUAL (${candleSource}):`);
-                        console.log(`   📏 Variação do candle: ${candleVariation.toFixed(2)} pts`);
-                        console.log(`   🎨 COR: ${apiColor} ${apiColorGreen ? '🟢' : apiColorRed ? '🔴' : '⚪'}`);
-
-                        // 🔍 VALIDAÇÃO 2: CÁLCULO Open(Entrada) vs Close(Saída) (SECUNDÁRIA - Backup)
-                        const calcGreen = variation > minVariation;
-                        const calcRed = variation < -minVariation;
-                        const calcDoji = Math.abs(variation) <= minVariation;
-                        const calcColor = calcGreen ? 'VERDE' : calcRed ? 'VERMELHO' : 'DOJI';
-
-                        console.log(`\n🔍 [VALIDAÇÃO 2] CÁLCULO ENTRADA→SAÍDA (BACKUP):`);
-                        console.log(`   📥 Open Entrada: ${entryOpen.toFixed(2)} (${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')})`);
-                        console.log(`   📤 Close Saída: ${expirationClose.toFixed(2)} (${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')})`);
-                        console.log(`   📏 Variação total: ${variation.toFixed(2)} pts`);
-                        console.log(`   🎨 COR CALCULADA: ${calcColor} ${calcGreen ? '🟢' : calcRed ? '🔴' : '⚪'}`);
-
-                        // ⚠️ VERIFICAR DIVERGÊNCIA
-                        const hasDivergence = apiColor !== calcColor;
-
-                        if (hasDivergence) {
-                            console.warn(`\n⚠️⚠️⚠️ DIVERGÊNCIA DETECTADA!`);
-                            console.warn(`   🎨 Cor Visual: ${apiColor}`);
-                            console.warn(`   🧮 Cor Calculada: ${calcColor}`);
-                            console.warn(`   ✅ USANDO: ${apiColor} (cor visual prevalece)`);
-                            console.warn(`   📊 Open Entrada: ${entryOpen.toFixed(2)}`);
-                            console.warn(`   📊 Open Candle: ${expirationOpen.toFixed(2)}`);
-                            console.warn(`   📊 Close Candle: ${expirationClose.toFixed(2)}`);
+                        // 📊 INFO ADICIONAL: Mostrar encadeamento se houver
+                        if (entryCandleData.source === 'chained') {
+                            const entryPrice = entryCandleData.open;
+                            const pnlVariation = expirationClose - entryPrice;
+                            console.log(`\n💰 [ENCADEAMENTO] Variação financeira (entrada→saída):`);
+                            console.log(`   📥 Entrada (saída anterior): ${entryPrice.toFixed(2)}`);
+                            console.log(`   📤 Saída (close atual): ${expirationClose.toFixed(2)}`);
+                            console.log(`   📊 Variação financeira: ${pnlVariation.toFixed(2)} pts`);
+                            console.log(`   ⚠️ Cor do candle = Open→Close (${candleColor}), não entrada→saída!`);
                         }
-
-                        // ✅ USAR COR VISUAL (PRIORIDADE)
-                        const isCandleGreen = apiColorGreen;
-                        const isCandleRed = apiColorRed;
-                        const isDoji = apiColorDoji;
-                        const candleColor = apiColor;
 
                         let result = null;
                         let pnl = 0;
