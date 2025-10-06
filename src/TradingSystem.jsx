@@ -5271,7 +5271,10 @@ useEffect(() => {
                             ? (entryTimestamp - lastConfirmedExit.current.timestamp)
                             : Infinity;
 
-                        const isConsecutive = timeSinceLastExit <= (5 * 60 * 1000); // Até 5 min de diferença
+                        // ✅ RIGOROSO: Deve ser EXATAMENTE 5 minutos (± 10 segundos de tolerância)
+                        const expectedGap = 5 * 60 * 1000; // 5 minutos
+                        const tolerance = 10 * 1000; // ± 10 segundos
+                        const isConsecutive = Math.abs(timeSinceLastExit - expectedGap) <= tolerance;
 
                         if (lastConfirmedExit.current.price && isConsecutive) {
                             // Usar saída do sinal anterior como entrada atual
@@ -5505,10 +5508,10 @@ useEffect(() => {
                         }, finalCaptureTime);
                     }
 
-                    // Validar APÓS o candle de expiração fechar
+                    // Validar NO MOMENTO do candle de expiração fechar
                     // O candle fecha no início do próximo (ex: candle 10:05-10:10 fecha às 10:10:00)
-                    // Aguardamos poucos segundos para o WebSocket processar o candle fechado
-                    const bufferTime = 5000; // 5 segundos após fechamento do candle
+                    // Usamos as capturas prévias (5s e 10s antes) que já foram feitas
+                    const bufferTime = 1000; // 1 segundo após fechamento (apenas para garantir que captures executaram)
                     const verificationTimerId = setTimeout(async () => {
                         try {
                             console.log(`⏰ [BINARY] Iniciando verificação sinal ${signal.id.toString().slice(0, 8)}...`);
@@ -5585,6 +5588,11 @@ useEffect(() => {
                         // 2º: EARLY CAPTURE (10s antes) - FALLBACK
                         // 3º: POST-CLOSE (após fechar) - ÚLTIMO RECURSO
                         let expirationOpen, expirationClose, candleSource;
+
+                        console.log(`\n🔍 [VALIDAÇÃO] Verificando capturas disponíveis:`);
+                        console.log(`   📊 FINAL-CAPTURE (5s antes): ${finalCapture ? '✅ Disponível' : '❌ Não disponível'}`);
+                        console.log(`   📊 EARLY-CAPTURE (10s antes): ${earlyCapture ? '✅ Disponível' : '❌ Não disponível'}`);
+                        console.log(`   📊 POST-CLOSE (após fechar): ${expirationCandle ? '✅ Disponível' : '❌ Não disponível'}`);
 
                         if (finalCapture) {
                             // ✅ MELHOR: Usar captura de 5s antes (mais precisa)
