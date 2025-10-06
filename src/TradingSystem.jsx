@@ -4543,6 +4543,13 @@ calculateVolumeScore(volume) {
             const orderExecutorRef = useRef(null);
             const verificationTimers = useRef(new Map());
             const minScoreRef = useRef(minScore);
+
+            // 🔗 Encadeamento de preços reais entre sinais consecutivos
+            const lastConfirmedExit = useRef({
+                price: null,        // Último preço de saída confirmado
+                timestamp: null,    // Timestamp da última saída
+                signalId: null      // ID do sinal que gerou essa saída
+            });
 const modeRef = useRef(mode);
 
 useEffect(() => {
@@ -5092,10 +5099,44 @@ useEffect(() => {
                     });
 
                     const entryTimer = setTimeout(() => {
-                        // ✅ MELHORADO: Buscar candle de entrada e usar Open REAL
-                        const entryCandle = marketDataRef.current?.getCandleByTimestamp(entryTimestamp);
+                        // 🔗 PRIORIDADE 1: Usar saída do sinal anterior (se disponível e consecutivo)
+                        const timeSinceLastExit = lastConfirmedExit.current.timestamp
+                            ? (entryTimestamp - lastConfirmedExit.current.timestamp)
+                            : Infinity;
 
-                        if (entryCandle) {
+                        const isConsecutive = timeSinceLastExit <= (5 * 60 * 1000); // Até 5 min de diferença
+
+                        if (lastConfirmedExit.current.price && isConsecutive) {
+                            // Usar saída do sinal anterior como entrada atual
+                            entryCandleData = {
+                                timestamp: entryTimestamp,
+                                open: lastConfirmedExit.current.price,  // 🎯 Saída anterior = Entrada atual
+                                close: lastConfirmedExit.current.price,
+                                source: 'chained',
+                                chainedFrom: lastConfirmedExit.current.signalId
+                            };
+
+                            signal.actualEntryPrice = lastConfirmedExit.current.price;
+                            signal.entryPriceUpdated = true;
+                            signal.isChained = true;
+
+                            console.log(`🔗 [ENTRY] Usando saída do sinal anterior (ENCADEADO)`);
+                            console.log(`   📌 Sinal anterior: ${lastConfirmedExit.current.signalId?.toString().slice(0, 8)}`);
+                            console.log(`   ⏰ Saída anterior: ${new Date(lastConfirmedExit.current.timestamp).toLocaleTimeString('pt-BR')}`);
+                            console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
+                            console.log(`   🎯 Preço REAL (saída anterior): ${lastConfirmedExit.current.price.toFixed(2)}`);
+                            console.log(`   📊 Diferença: ${(lastConfirmedExit.current.price - signal.price).toFixed(2)} pts`);
+
+                            // Atualizar sinal na UI
+                            setSignals(prevSignals =>
+                                prevSignals.map(s =>
+                                    s.id === signal.id
+                                        ? { ...s, actualEntryPrice: lastConfirmedExit.current.price, entryPriceUpdated: true, isChained: true }
+                                        : s
+                                )
+                            );
+                        } else if (entryCandle = marketDataRef.current?.getCandleByTimestamp(entryTimestamp)) {
+                            // 🔗 PRIORIDADE 2: Buscar candle de entrada
                             // Usar OPEN do candle de entrada (preço real quando candle iniciou)
                             entryCandleData = {
                                 timestamp: entryCandle.timestamp,
@@ -5327,6 +5368,14 @@ useEffect(() => {
 
                         verificationTimers.current.delete(signal.id);
 
+                        // 🔗 SALVAR preço de saída para próximo sinal (ENCADEAMENTO)
+                        lastConfirmedExit.current = {
+                            price: expirationClose,
+                            timestamp: expirationTimestamp,
+                            signalId: signal.id
+                        };
+                        console.log(`🔗 [CHAIN] Preço de saída salvo para próximo sinal: ${expirationClose.toFixed(2)}`);
+
                         // Atualizar estado dos sinais
                         signal.status = result;
                         signal.pnl = pnl;
@@ -5360,7 +5409,12 @@ useEffect(() => {
                             orderExecutorRef.current.closePosition(signal.id, result, pnl);
                         }
 
-                        // ✅ Atualizar ML com PREÇOS REAIS (não previsões)
+                        // ✅ Verificar se entrada é CONFIÁVEL para ML
+                        const hasReliableEntry = entryCandleData.source === 'chained' ||
+                                                 entryCandleData.source === 'candle' ||
+                                                 entryCandleData.source === 'previous_candle';
+
+                        // ✅ Atualizar ML APENAS com preços REAIS confiáveis
                         if (alphaEngine && result !== 'EXPIRADO' && result !== 'EMPATE') {
                             // Dados do candle de ENTRADA (preço real de entrada)
                             signal.entryCandle = {
@@ -5390,11 +5444,19 @@ useEffect(() => {
                             signal.realPnL = pnl;
                             signal.predictedPrice = signal.price; // Guardar previsão original
 
-                            console.log(`🧠 [ML] Aprendendo com preços REAIS:`);
-                            console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryOpen.toFixed(2)}`);
-                            console.log(`   Erro de previsão: ${(entryOpen - signal.price).toFixed(2)} pts`);
+                            if (hasReliableEntry) {
+                                // ✅ Entrada confiável: TREINAR ML
+                                console.log(`🧠 [ML] Aprendendo com preços REAIS (${entryCandleData.source}):`);
+                                console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryOpen.toFixed(2)}`);
+                                console.log(`   Erro de previsão: ${(entryOpen - signal.price).toFixed(2)} pts`);
 
-                            alphaEngine.learnFromTrade(signal, result);
+                                alphaEngine.learnFromTrade(signal, result);
+                            } else {
+                                // ⚠️ Entrada NÃO confiável (gap): NÃO treinar, mas saída serve para próximo
+                                console.log(`⚠️ [ML] SKIP - Entrada não confiável (${entryCandleData.source})`);
+                                console.log(`   Validação: ${result} | Saída: ${expirationClose.toFixed(2)}`);
+                                console.log(`   💡 Saída salva para encadear próximo sinal!`);
+                            }
                         }
 
                         // Atualizar UI
