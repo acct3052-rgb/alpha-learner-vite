@@ -5184,7 +5184,7 @@ useEffect(() => {
                                         previousTimestamp
                                     );
 
-                                    if (previousCandle) {
+                                    if (previousCandle && previousCandle.close) {
                                         // Usar Close do candle anterior como entrada real
                                         entryCandleData = {
                                             timestamp: entryTimestamp,
@@ -5217,7 +5217,8 @@ useEffect(() => {
                                             close: signal.price,
                                             source: 'predicted'
                                         };
-                                        console.log(`⚠️ [ENTRY] Usando preço previsto (nenhum candle disponível): ${signal.price.toFixed(2)}`);
+                                        console.log(`⚠️ [ENTRY] Usando preço previsto (candle anterior não disponível ou inválido)`);
+                                        console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
                                     }
                                 }
                             } catch (error) {
@@ -5462,8 +5463,8 @@ useEffect(() => {
                         if (isDoji) {
                             result = 'EMPATE';
                             pnl = 0;
-                            console.log(`   ⚖️ EMPATE! Candle DOJI - variação insignificante (${Math.abs(variation).toFixed(8)})`);
-                            console.log(`   📏 Margem mínima: ${minVariation.toFixed(8)} | Variação real: ${Math.abs(variation).toFixed(8)}`);
+                            console.log(`   ⚖️ EMPATE! Candle DOJI - variação insignificante (${Math.abs(candleVariation).toFixed(8)})`);
+                            console.log(`   📏 Margem mínima: ${minVariation.toFixed(8)} | Variação real: ${Math.abs(candleVariation).toFixed(8)}`);
                         } else if (signal.direction === 'BUY') {
                             // CALL: candle precisa ser VERDE (close > open)
                             console.log(`   🔍 [BUY/CALL] Esperado: VERDE | Resultado: ${candleColor}`);
@@ -5493,10 +5494,11 @@ useEffect(() => {
                         console.log(`\n🏁 [BINARY] Resultado Final: ${result}`);
                         console.log(`   🎯 Direção: ${signal.direction} (esperava ${signal.direction === 'BUY' ? 'SUBIDA 🟢' : 'DESCIDA 🔴'})`);
                         console.log(`   💰 Preço Previsto: ${signal.price.toFixed(2)}`);
-                        console.log(`   📥 Entrada REAL: ${entryOpen.toFixed(2)} (Open ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')})`);
-                        console.log(`   📤 Saída REAL: ${expirationClose.toFixed(2)} (Close ${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')})`);
-                        console.log(`   📊 Variação Total: ${variation.toFixed(2)} pts`);
-                        console.log(`   🎨 Resultado: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`   📊 Candle: ${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')}`);
+                        console.log(`   📥 Open: ${expirationOpen.toFixed(2)}`);
+                        console.log(`   📤 Close: ${expirationClose.toFixed(2)}`);
+                        console.log(`   📏 Variação: ${candleVariation.toFixed(2)} pts`);
+                        console.log(`   🎨 Cor: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
                         console.log(`   💵 P&L: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} BRL`);
 
                         verificationTimers.current.delete(signal.id);
