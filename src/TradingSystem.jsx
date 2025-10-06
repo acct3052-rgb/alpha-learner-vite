@@ -2415,11 +2415,13 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 }
 
                 // 4. Buscar candle mais próximo ANTES do timestamp (último candle disponível)
+                // ⚠️ APENAS para tolerância pequena (não pegar candle muito antigo)
                 const candlesBefore = this.prices.filter(p => p.timestamp <= timestamp);
                 if (candlesBefore.length > 0) {
                     const closest = candlesBefore[candlesBefore.length - 1];
                     const diff = timestamp - closest.timestamp;
-                    if (diff <= toleranceMs * 2) { // Até 2 minutos de diferença
+                    // Reduzido de 2min para 30s - evitar pegar candle anterior em binarias
+                    if (diff <= 30000) { // Até 30 segundos de diferença
                         console.log(`⚠️ Usando candle mais próximo: ${new Date(closest.timestamp).toLocaleTimeString('pt-BR')} (diff: ${diff}ms)`);
                         return closest;
                     }
