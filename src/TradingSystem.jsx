@@ -5236,18 +5236,21 @@ useEffect(() => {
                         showNotification(`✅ Entrada: ${signal.direction} @ ${displayPrice.toFixed(2)}`);
                     }, timeUntilEntry);
 
-                    // 🎯 CAPTURA DA COR DO CANDLE: 10 segundos ANTES de fechar
-                    // Quando faltam 10s, o candle já tem sua cor quase definitiva
-                    let preCapturedCandle = null;
-                    const preCaptureTime = timeUntilExpiration - 10000; // 10s antes
+                    // 🎯 SISTEMA DUPLO DE CAPTURA DA COR DO CANDLE
+                    // 1ª captura: 10s antes (early)
+                    // 2ª captura: 5s antes (final - PRIORIDADE)
+                    let earlyCapture = null;
+                    let finalCapture = null;
 
-                    if (preCaptureTime > 0) {
+                    // 📊 CAPTURA 1: 10 segundos antes (early capture)
+                    const earlyCaptureTime = timeUntilExpiration - 10000;
+                    if (earlyCaptureTime > 0) {
                         setTimeout(() => {
-                            console.log(`🎯 [PRE-CAPTURE] Capturando COR do candle 10s antes de fechar...`);
+                            console.log(`📊 [EARLY-CAPTURE] Capturando candle 10s antes de fechar...`);
 
                             const liveCandle = marketDataRef.current?.currentCandle;
                             if (liveCandle && liveCandle.timestamp === expirationTimestamp) {
-                                preCapturedCandle = {
+                                earlyCapture = {
                                     timestamp: liveCandle.timestamp,
                                     open: liveCandle.open,
                                     close: liveCandle.close,
@@ -5255,20 +5258,65 @@ useEffect(() => {
                                     low: liveCandle.low,
                                     volume: liveCandle.volume,
                                     captureTime: Date.now(),
-                                    source: 'pre_capture'
+                                    source: 'early_capture'
                                 };
 
-                                const variation = preCapturedCandle.close - preCapturedCandle.open;
+                                const variation = earlyCapture.close - earlyCapture.open;
                                 const color = variation > 0.0001 ? 'VERDE 🟢' : variation < -0.0001 ? 'VERMELHO 🔴' : 'DOJI ⚪';
 
-                                console.log(`🎯 [PRE-CAPTURE] Candle capturado:`);
-                                console.log(`   📊 OHLC: O=${preCapturedCandle.open.toFixed(2)} → C=${preCapturedCandle.close.toFixed(2)}`);
+                                console.log(`📊 [EARLY-CAPTURE] Captura inicial (10s antes):`);
+                                console.log(`   📊 OHLC: O=${earlyCapture.open.toFixed(2)} → C=${earlyCapture.close.toFixed(2)}`);
                                 console.log(`   🎨 COR: ${color}`);
-                                console.log(`   ⏰ Capturado em: ${new Date(preCapturedCandle.captureTime).toLocaleTimeString('pt-BR')}`);
+                                console.log(`   📏 Variação: ${variation.toFixed(2)} pts`);
                             } else {
-                                console.warn(`⚠️ [PRE-CAPTURE] Candle de expiração não encontrado no currentCandle`);
+                                console.warn(`⚠️ [EARLY-CAPTURE] Candle não encontrado no currentCandle`);
                             }
-                        }, preCaptureTime);
+                        }, earlyCaptureTime);
+                    }
+
+                    // 🎯 CAPTURA 2: 5 segundos antes (final capture - MAIS CONFIÁVEL)
+                    const finalCaptureTime = timeUntilExpiration - 5000;
+                    if (finalCaptureTime > 0) {
+                        setTimeout(() => {
+                            console.log(`🎯 [FINAL-CAPTURE] Capturando candle 5s antes de fechar (DEFINITIVO)...`);
+
+                            const liveCandle = marketDataRef.current?.currentCandle;
+                            if (liveCandle && liveCandle.timestamp === expirationTimestamp) {
+                                finalCapture = {
+                                    timestamp: liveCandle.timestamp,
+                                    open: liveCandle.open,
+                                    close: liveCandle.close,
+                                    high: liveCandle.high,
+                                    low: liveCandle.low,
+                                    volume: liveCandle.volume,
+                                    captureTime: Date.now(),
+                                    source: 'final_capture'
+                                };
+
+                                const variation = finalCapture.close - finalCapture.open;
+                                const color = variation > 0.0001 ? 'VERDE 🟢' : variation < -0.0001 ? 'VERMELHO 🔴' : 'DOJI ⚪';
+
+                                console.log(`🎯 [FINAL-CAPTURE] Captura final (5s antes):`);
+                                console.log(`   📊 OHLC: O=${finalCapture.open.toFixed(2)} → C=${finalCapture.close.toFixed(2)}`);
+                                console.log(`   🎨 COR: ${color}`);
+                                console.log(`   📏 Variação: ${variation.toFixed(2)} pts`);
+
+                                // Comparar com early capture se disponível
+                                if (earlyCapture) {
+                                    const earlyColor = (earlyCapture.close - earlyCapture.open) > 0.0001 ? 'VERDE' :
+                                                      (earlyCapture.close - earlyCapture.open) < -0.0001 ? 'VERMELHO' : 'DOJI';
+                                    const finalColor = variation > 0.0001 ? 'VERDE' : variation < -0.0001 ? 'VERMELHO' : 'DOJI';
+
+                                    if (earlyColor !== finalColor) {
+                                        console.warn(`⚠️ COR MUDOU! Early: ${earlyColor} → Final: ${finalColor}`);
+                                    } else {
+                                        console.log(`✅ Cor consistente entre capturas: ${finalColor}`);
+                                    }
+                                }
+                            } else {
+                                console.warn(`⚠️ [FINAL-CAPTURE] Candle não encontrado no currentCandle`);
+                            }
+                        }, finalCaptureTime);
                     }
 
                     // Validar APÓS o candle de expiração fechar
@@ -5341,31 +5389,44 @@ useEffect(() => {
                             return;
                         }
 
-                        // ✅ SISTEMA TRIPLO DE VALIDAÇÃO COM PRÉ-CAPTURA
+                        // ✅ SISTEMA DE VALIDAÇÃO COM DUPLA CAPTURA
                         const entryOpen = entryCandleData.open;
                         const minVariation = 0.0001;
 
-                        // 🎯 PRIORIDADE 1: Usar PRE-CAPTURED candle (10s antes de fechar)
+                        // 🎯 PRIORIDADE DE USO:
+                        // 1º: FINAL CAPTURE (5s antes) - MAIS CONFIÁVEL
+                        // 2º: EARLY CAPTURE (10s antes) - FALLBACK
+                        // 3º: POST-CLOSE (após fechar) - ÚLTIMO RECURSO
                         let expirationOpen, expirationClose, candleSource;
 
-                        if (preCapturedCandle) {
-                            // ✅ Usar candle capturado ANTES de fechar (mais confiável)
-                            expirationOpen = preCapturedCandle.open;
-                            expirationClose = preCapturedCandle.close;
-                            candleSource = 'PRE-CAPTURED (10s antes)';
+                        if (finalCapture) {
+                            // ✅ MELHOR: Usar captura de 5s antes (mais precisa)
+                            expirationOpen = finalCapture.open;
+                            expirationClose = finalCapture.close;
+                            candleSource = 'FINAL-CAPTURE (5s antes)';
 
-                            console.log(`\n🎯 [VALIDAÇÃO PRE-CAPTURE] Usando candle capturado 10s antes:`);
-                            console.log(`   ⏰ Capturado em: ${new Date(preCapturedCandle.captureTime).toLocaleTimeString('pt-BR')}`);
+                            console.log(`\n🎯 [VALIDAÇÃO FINAL-CAPTURE] Usando captura de 5s antes (MAIS PRECISA):`);
+                            console.log(`   ⏰ Capturado em: ${new Date(finalCapture.captureTime).toLocaleTimeString('pt-BR')}`);
                             console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
+                        } else if (earlyCapture) {
+                            // ⚠️ FALLBACK 1: Usar captura de 10s antes
+                            expirationOpen = earlyCapture.open;
+                            expirationClose = earlyCapture.close;
+                            candleSource = 'EARLY-CAPTURE (10s antes)';
+
+                            console.log(`\n📊 [VALIDAÇÃO EARLY-CAPTURE] Final capture falhou, usando early (10s antes):`);
+                            console.log(`   ⏰ Capturado em: ${new Date(earlyCapture.captureTime).toLocaleTimeString('pt-BR')}`);
+                            console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
+                            console.warn(`   ⚠️ ATENÇÃO: Cor pode ter mudado nos últimos 5s!`);
                         } else {
-                            // ⚠️ Fallback: usar candle fechado (pode ter mudado de cor)
+                            // ⚠️ FALLBACK 2: Usar candle fechado (pode ter mudado de cor)
                             expirationOpen = expirationCandle.open;
                             expirationClose = expirationCandle.close;
                             candleSource = 'POST-CLOSE (após fechar)';
 
-                            console.log(`\n⚠️ [VALIDAÇÃO POST-CLOSE] Candle não foi pré-capturado, usando após fechar:`);
+                            console.log(`\n⚠️⚠️⚠️ [VALIDAÇÃO POST-CLOSE] NENHUMA captura prévia disponível!`);
                             console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
-                            console.warn(`   ⚠️ ATENÇÃO: Cor pode ter mudado após fechamento!`);
+                            console.warn(`   ⚠️⚠️⚠️ ATENÇÃO: Cor pode ter mudado após fechamento!`);
                         }
 
                         const variation = expirationClose - entryOpen;
