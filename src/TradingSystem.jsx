@@ -4555,7 +4555,7 @@ calculateVolumeScore(volume) {
             const signalCandidatesBuffer = useRef(new Map()); // Map<entryTime, {signal, timer}>
             const SIGNAL_OPTIMIZATION = {
                 enabled: true,  // Ativar otimização de sinais
-                sendBeforeEntry: 90000,  // Enviar 1min30s antes da entrada (90 segundos)
+                sendBeforeEntry: 60000,  // Enviar 60s (1min) antes da entrada
                 criteria: 'best_score'  // 'best_score' | 'best_ml' | 'both'
             };
 
@@ -4577,7 +4577,7 @@ calculateVolumeScore(volume) {
             const scheduleOptimizedSignal = (signal, entryTimeKey) => {
                 const now = Date.now();
                 const entryTime = signal.entryTime.getTime();
-                const sendTime = entryTime - SIGNAL_OPTIMIZATION.sendBeforeEntry; // 1min30s antes
+                const sendTime = entryTime - SIGNAL_OPTIMIZATION.sendBeforeEntry; // 60s antes
                 const delay = sendTime - now;
 
                 // Função para enviar o sinal (reutilizada para agendado ou imediato)
@@ -5152,7 +5152,7 @@ useEffect(() => {
 
                 console.log('🔄 Sistema de análise contínua iniciado');
                 console.log(`   🔄 Intervalo: ${ANALYSIS_INTERVAL/1000}s (monitoramento contínuo)`);
-                console.log(`   🎯 Sinais enviados: 1min30s antes da entrada`);
+                console.log(`   🎯 Sinais enviados: 60s (1min) antes da entrada`);
                 console.log(`   ⚠️ Tempo mínimo antes do fechamento: ${MIN_TIME_BEFORE_CLOSE}s`);
                 console.log('   🚫 Filtro de duplicados: ATIVO');
                 console.log('   📊 Sistema de otimização: ATIVO');
