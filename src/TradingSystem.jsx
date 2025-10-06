@@ -4580,62 +4580,70 @@ calculateVolumeScore(volume) {
                 const sendTime = entryTime - SIGNAL_OPTIMIZATION.sendBeforeEntry; // 1min30s antes
                 const delay = sendTime - now;
 
+                // Função para enviar o sinal (reutilizada para agendado ou imediato)
+                const sendSignal = () => {
+                    console.log('%c✅ ENVIANDO MELHOR SINAL!', 'color: #00ff88; font-weight: bold; font-size: 14px;');
+                    console.log(`   📊 Score final: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+
+                    // Enviar o sinal
+                    setSignals(prev => {
+                        const newSignals = [signal, ...prev].slice(0, 10);
+                        newSignals[0].timestamp = new Date();
+                        return newSignals;
+                    });
+
+                    showNotification(`Melhor sinal ${signal.direction} - Score: ${signal.score}%`);
+                    playAlert();
+                    scheduleSignalVerification(signal);
+
+                    // Telegram
+                    if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
+                        window.telegramNotifier.notifySignal(signal);
+                    }
+
+                    // Executar ordem (auto ou manual)
+                    if (orderExecutorRef.current) {
+                        orderExecutorRef.current.executeSignalAuto(
+                            signal,
+                            modeRef.current,
+                            riskAmount
+                        ).then(executionResult => {
+                            if (executionResult.success) {
+                                showNotification(
+                                    `🤖 ORDEM EXECUTADA: ${signal.direction} @ ${executionResult.executedPrice.toFixed(2)} | ID: ${executionResult.orderId}`
+                                );
+                                signal.executed = true;
+                                signal.executionDetails = executionResult;
+                                if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
+                                    window.telegramNotifier.notifyExecution(signal, executionResult);
+                                }
+                                setSignals(prev => prev.map(s => s.id === signal.id ? signal : s));
+                            } else if (executionResult.reason === 'manual_mode') {
+                                console.log('✅ Sinal enviado para aprovação manual');
+                            } else {
+                                showNotification(`⚠️ Erro: ${executionResult.message}`);
+                            }
+                        });
+                    }
+
+                    // Limpar do buffer
+                    signalCandidatesBuffer.current.delete(entryTimeKey);
+                };
+
                 if (delay > 0) {
+                    // Tempo suficiente - agendar para envio no momento ideal
                     console.log(`📅 Sinal agendado para ${new Date(sendTime).toLocaleTimeString('pt-BR')} (em ${Math.floor(delay/1000)}s)`);
                     console.log(`   Score: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
 
-                    const timer = setTimeout(() => {
-                        console.log('%c✅ ENVIANDO MELHOR SINAL!', 'color: #00ff88; font-weight: bold; font-size: 14px;');
-                        console.log(`   📊 Score final: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
-
-                        // Enviar o sinal
-                        setSignals(prev => {
-                            const newSignals = [signal, ...prev].slice(0, 10);
-                            newSignals[0].timestamp = new Date();
-                            return newSignals;
-                        });
-
-                        showNotification(`Melhor sinal ${signal.direction} - Score: ${signal.score}%`);
-                        playAlert();
-                        scheduleSignalVerification(signal);
-
-                        // Telegram
-                        if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
-                            window.telegramNotifier.notifySignal(signal);
-                        }
-
-                        // Executar ordem (auto ou manual)
-                        if (orderExecutorRef.current) {
-                            orderExecutorRef.current.executeSignalAuto(
-                                signal,
-                                modeRef.current,
-                                riskAmount
-                            ).then(executionResult => {
-                                if (executionResult.success) {
-                                    showNotification(
-                                        `🤖 ORDEM EXECUTADA: ${signal.direction} @ ${executionResult.executedPrice.toFixed(2)} | ID: ${executionResult.orderId}`
-                                    );
-                                    signal.executed = true;
-                                    signal.executionDetails = executionResult;
-                                    if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
-                                        window.telegramNotifier.notifyExecution(signal, executionResult);
-                                    }
-                                    setSignals(prev => prev.map(s => s.id === signal.id ? signal : s));
-                                } else if (executionResult.reason === 'manual_mode') {
-                                    console.log('✅ Sinal enviado para aprovação manual');
-                                } else {
-                                    showNotification(`⚠️ Erro: ${executionResult.message}`);
-                                }
-                            });
-                        }
-
-                        // Limpar do buffer
-                        signalCandidatesBuffer.current.delete(entryTimeKey);
-                    }, delay);
-
+                    const timer = setTimeout(sendSignal, delay);
                     signalCandidatesBuffer.current.set(entryTimeKey, { signal, timer });
                 } else {
-                    console.warn(`⚠️ Sinal ignorado - tempo de envio já passou (delay: ${delay}ms)`);
+                    // Tempo insuficiente - enviar IMEDIATAMENTE
+                    console.log(`⚡ Sinal gerado tarde (${Math.abs(Math.floor(delay/1000))}s após ideal) - ENVIANDO IMEDIATAMENTE`);
+                    console.log(`   Score: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+                    console.log(`   ⏰ Entrada em: ${Math.floor((entryTime - now)/1000)}s`);
+
+                    sendSignal();
                 }
             };
 
@@ -5691,12 +5699,12 @@ useEffect(() => {
                             // ✅ Continua - não afeta resultado calculado
                         }
 
-                        // 🧹 AUTO-CLEANUP: Remover sinal confirmado após 5 segundos
+                        // 🧹 AUTO-CLEANUP: Remover sinal confirmado após 30 segundos
                         try {
                             setTimeout(() => {
                                 console.log(`🧹 Auto-removendo sinal confirmado: ${signal.id}`);
                                 dismissSignal(signal.id);
-                            }, 5000);
+                            }, 30000);
                         } catch (error) {
                             console.error('❌ Erro ao agendar cleanup:', error);
                             // ✅ Continua - não afeta resultado calculado
@@ -5884,11 +5892,11 @@ useEffect(() => {
                     }
                     verificationTimers.current.delete(signal.id);
 
-                    // 🧹 AUTO-CLEANUP: Remover sinais finalizados após 5 segundos
+                    // 🧹 AUTO-CLEANUP: Remover sinais finalizados após 30 segundos
                     setTimeout(() => {
                         console.log(`🧹 Auto-removendo sinal finalizado: ${signal.id}`);
                         dismissSignal(signal.id);
-                    }, 5000); // 5 segundos
+                    }, 30000); // 30 segundos
                 } catch (error) {
                     console.log('Erro na verificação:', error);
                 }
