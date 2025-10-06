@@ -5092,34 +5092,76 @@ useEffect(() => {
                     });
 
                     const entryTimer = setTimeout(() => {
-                        // Buscar candle de entrada (apenas para referência de preço para ML)
+                        // ✅ MELHORADO: Buscar candle de entrada e usar Open REAL
                         const entryCandle = marketDataRef.current?.getCandleByTimestamp(entryTimestamp);
 
                         if (entryCandle) {
+                            // Usar OPEN do candle de entrada (preço real quando candle iniciou)
                             entryCandleData = {
                                 timestamp: entryCandle.timestamp,
-                                open: entryCandle.open,
+                                open: entryCandle.open,  // 🎯 Preço REAL de entrada
                                 close: entryCandle.close,
                                 source: 'candle'
                             };
-                            console.log(`✅ [ENTRY] Candle de entrada registrado para ML`);
+
+                            // ✅ Atualizar preço do sinal com o Open real
+                            signal.actualEntryPrice = entryCandle.open;
+                            signal.entryPriceUpdated = true;
+
+                            console.log(`✅ [ENTRY] Candle de entrada capturado`);
                             console.log(`   📌 Timestamp: ${new Date(entryCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                            console.log(`   📌 Open: ${entryCandle.open.toFixed(6)}`);
-                            console.log(`   📌 Close: ${entryCandle.close.toFixed(6)}`);
+                            console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
+                            console.log(`   🎯 Open REAL: ${entryCandle.open.toFixed(2)}`);
+                            console.log(`   📊 Diferença: ${(entryCandle.open - signal.price).toFixed(2)} pts`);
+
+                            // Atualizar sinal na UI
+                            setSignals(prevSignals =>
+                                prevSignals.map(s =>
+                                    s.id === signal.id
+                                        ? { ...s, actualEntryPrice: entryCandle.open, entryPriceUpdated: true }
+                                        : s
+                                )
+                            );
                         } else {
-                            // Fallback: usar preço do sinal
+                            // Fallback: usar preço previsto do sinal
                             entryCandleData = {
                                 timestamp: entryTimestamp,
                                 open: signal.price,
                                 close: signal.price,
                                 source: 'signal'
                             };
-                            console.log(`📊 [ENTRY] Usando preço do sinal: ${signal.price.toFixed(6)}`);
+                            console.log(`📊 [ENTRY] Usando preço previsto: ${signal.price.toFixed(6)}`);
                         }
 
-                        // Notificar execução
-                        showNotification(`✅ Entrada: ${signal.direction} @ ${entryCandleData.open.toFixed(6)}`);
+                        // Notificar execução com preço real
+                        const displayPrice = entryCandleData.open;
+                        showNotification(`✅ Entrada: ${signal.direction} @ ${displayPrice.toFixed(2)}`);
                     }, timeUntilEntry);
+
+                    // 🔄 MONITORAMENTO PRÉ-FECHAMENTO: Capturar preço atual 30s antes
+                    let currentExitPrice = null;
+                    const preCloseMonitoringTime = timeUntilExpiration - 30000; // 30s antes
+
+                    if (preCloseMonitoringTime > 0) {
+                        setTimeout(() => {
+                            console.log(`📊 [PRE-CLOSE] Iniciando monitoramento de saída (30s antes)...`);
+
+                            // Monitorar a cada 5 segundos
+                            const monitorInterval = setInterval(() => {
+                                const liveCandle = marketDataRef.current?.currentCandle;
+                                if (liveCandle && liveCandle.timestamp === expirationTimestamp) {
+                                    currentExitPrice = liveCandle.close;
+                                    console.log(`📊 [PRE-CLOSE] Preço atual: ${currentExitPrice.toFixed(2)}`);
+                                }
+                            }, 5000);
+
+                            // Parar monitoramento após 30s (quando candle fecha)
+                            setTimeout(() => {
+                                clearInterval(monitorInterval);
+                                console.log(`✅ [PRE-CLOSE] Monitoramento concluído. Último preço: ${currentExitPrice?.toFixed(2) || 'N/A'}`);
+                            }, 30000);
+                        }, preCloseMonitoringTime);
+                    }
 
                     // Validar APÓS o candle de expiração fechar
                     // O candle fecha no início do próximo (ex: candle 10:05-10:10 fecha às 10:10:00)
@@ -5183,26 +5225,28 @@ useEffect(() => {
                             return;
                         }
 
-                        // LÓGICA DE OPÇÕES BINÁRIAS POR COR DO CANDLE:
-                        // Verificar se o candle de expiração é verde (alta) ou vermelho (baixa)
-                        const expirationOpen = expirationCandle.open;
-                        const expirationClose = expirationCandle.close;
-                        const variation = expirationClose - expirationOpen;
+                        // ✅ LÓGICA MELHORADA DE OPÇÕES BINÁRIAS:
+                        // Comparar Open da Entrada vs Close da Expiração
+                        const entryOpen = entryCandleData.open;   // Open do candle de ENTRADA
+                        const expirationClose = expirationCandle.close; // Close do candle de EXPIRAÇÃO
+                        const variation = expirationClose - entryOpen; // Variação total
 
                         // Para opções binárias, qualquer direção conta (não importa magnitude)
                         // DOJI apenas se variação for exatamente zero ou quase zero (arredondamento)
                         const minVariation = 0.0001; // Threshold mínimo absoluto (~0.0001 pts)
 
-                        const isCandleGreen = variation > minVariation;  // Verde = qualquer subida
-                        const isCandleRed = variation < -minVariation;   // Vermelho = qualquer descida
+                        const isCandleGreen = variation > minVariation;  // Verde = subiu desde entrada
+                        const isCandleRed = variation < -minVariation;   // Vermelho = caiu desde entrada
                         const isDoji = Math.abs(variation) <= minVariation; // DOJI = variação zero
                         const candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
 
-                        console.log(`🔍 [BINARY] Validação por Cor do Candle:`);
-                        console.log(`   📥 Entrada (referência ML): ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')} - Open: ${entryCandleData.open.toFixed(6)}`);
+                        console.log(`🔍 [BINARY] Validação Open(Entrada) → Close(Expiração):`);
+                        console.log(`   📥 Entrada: ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')}`);
+                        console.log(`      Open: ${entryOpen.toFixed(2)}`);
                         console.log(`   📤 Expiração: ${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                        console.log(`      Open: ${expirationOpen.toFixed(6)} → Close: ${expirationClose.toFixed(6)}`);
-                        console.log(`      Cor: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`      Close: ${expirationClose.toFixed(2)}`);
+                        console.log(`   📊 Variação: ${variation.toFixed(2)} pts`);
+                        console.log(`   🎨 Resultado: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
 
                         let result = null;
                         let pnl = 0;
@@ -5239,13 +5283,14 @@ useEffect(() => {
                             }
                         }
 
-                        console.log(`🏁 [BINARY] Resultado Final: ${result}`);
-                        console.log(`   Direção do Sinal: ${signal.direction} (esperava candle ${signal.direction === 'BUY' ? 'VERDE 🟢' : 'VERMELHO 🔴'})`);
-                        console.log(`   ⏰ Timestamp Expiração: ${expirationCandle.timestamp} (${new Date(expirationCandle.timestamp).toLocaleString('pt-BR')})`);
-                        console.log(`   📊 Candle Expiração: Open ${expirationOpen.toFixed(2)} → Close ${expirationClose.toFixed(2)}`);
-                        console.log(`   🎨 Cor do Candle: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
-                        console.log(`   📏 Variação: ${(expirationClose - expirationOpen).toFixed(2)} pts`);
-                        console.log(`   💰 P&L: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`);
+                        console.log(`\n🏁 [BINARY] Resultado Final: ${result}`);
+                        console.log(`   🎯 Direção: ${signal.direction} (esperava ${signal.direction === 'BUY' ? 'SUBIDA 🟢' : 'DESCIDA 🔴'})`);
+                        console.log(`   💰 Preço Previsto: ${signal.price.toFixed(2)}`);
+                        console.log(`   📥 Entrada REAL: ${entryOpen.toFixed(2)} (Open ${new Date(entryCandleData.timestamp).toLocaleTimeString('pt-BR')})`);
+                        console.log(`   📤 Saída REAL: ${expirationClose.toFixed(2)} (Close ${new Date(expirationCandle.timestamp).toLocaleTimeString('pt-BR')})`);
+                        console.log(`   📊 Variação Total: ${variation.toFixed(2)} pts`);
+                        console.log(`   🎨 Resultado: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`   💵 P&L: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} BRL`);
 
                         verificationTimers.current.delete(signal.id);
 
@@ -5282,31 +5327,39 @@ useEffect(() => {
                             orderExecutorRef.current.closePosition(signal.id, result, pnl);
                         }
 
-                        // Atualizar ML com dados completos do candle de expiração
+                        // ✅ Atualizar ML com PREÇOS REAIS (não previsões)
                         if (alphaEngine && result !== 'EXPIRADO' && result !== 'EMPATE') {
-                            // Adicionar dados do candle de expiração ao sinal para ML aprender
+                            // Dados do candle de ENTRADA (preço real de entrada)
+                            signal.entryCandle = {
+                                timestamp: entryCandleData.timestamp,
+                                open: entryOpen,  // 🎯 Preço REAL de entrada
+                                close: entryCandleData.close,
+                                source: entryCandleData.source
+                            };
+
+                            // Dados do candle de EXPIRAÇÃO (preço real de saída)
                             signal.expirationCandle = {
                                 timestamp: expirationCandle.timestamp,
-                                open: expirationOpen,
-                                close: expirationClose,
+                                open: expirationCandle.open,
+                                close: expirationClose,  // 🎯 Preço REAL de saída
                                 high: expirationCandle.high,
                                 low: expirationCandle.low,
                                 color: candleColor,
                                 isGreen: isCandleGreen,
                                 isRed: isCandleRed,
-                                bodySize: Math.abs(expirationClose - expirationOpen),
-                                variation: expirationClose - expirationOpen
+                                bodySize: Math.abs(variation), // Variação REAL (entrada→saída)
+                                variation: variation  // 🎯 Variação REAL total
                             };
 
-                            // Adicionar dados do candle de entrada também
-                            if (entryCandleData) {
-                                signal.entryCandle = {
-                                    timestamp: entryCandleData.timestamp,
-                                    open: entryCandleData.open,
-                                    close: entryCandleData.close,
-                                    source: entryCandleData.source
-                                };
-                            }
+                            // Preços reais para ML
+                            signal.realEntryPrice = entryOpen;
+                            signal.realExitPrice = expirationClose;
+                            signal.realPnL = pnl;
+                            signal.predictedPrice = signal.price; // Guardar previsão original
+
+                            console.log(`🧠 [ML] Aprendendo com preços REAIS:`);
+                            console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryOpen.toFixed(2)}`);
+                            console.log(`   Erro de previsão: ${(entryOpen - signal.price).toFixed(2)} pts`);
 
                             alphaEngine.learnFromTrade(signal, result);
                         }
