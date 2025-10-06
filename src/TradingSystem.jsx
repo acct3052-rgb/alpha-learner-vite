@@ -5554,27 +5554,27 @@ useEffect(() => {
                             // Dados do candle de ENTRADA (preço real de entrada)
                             signal.entryCandle = {
                                 timestamp: entryCandleData.timestamp,
-                                open: entryOpen,  // 🎯 Preço REAL de entrada
+                                open: entryCandleData.open,  // 🎯 Preço REAL de entrada
                                 close: entryCandleData.close,
                                 source: entryCandleData.source
                             };
 
                             // Dados do candle de EXPIRAÇÃO (preço real de saída)
                             signal.expirationCandle = {
-                                timestamp: expirationCandle.timestamp,
-                                open: expirationCandle.open,
+                                timestamp: expirationTimestamp,
+                                open: expirationOpen,
                                 close: expirationClose,  // 🎯 Preço REAL de saída
                                 high: expirationCandle.high,
                                 low: expirationCandle.low,
                                 color: candleColor,
                                 isGreen: isCandleGreen,
                                 isRed: isCandleRed,
-                                bodySize: Math.abs(variation), // Variação REAL (entrada→saída)
-                                variation: variation  // 🎯 Variação REAL total
+                                bodySize: Math.abs(candleVariation), // Variação do candle (Open→Close)
+                                variation: candleVariation  // 🎯 Variação do candle
                             };
 
                             // Preços reais para ML
-                            signal.realEntryPrice = entryOpen;
+                            signal.realEntryPrice = entryCandleData.open;
                             signal.realExitPrice = expirationClose;
                             signal.realPnL = pnl;
                             signal.predictedPrice = signal.price; // Guardar previsão original
