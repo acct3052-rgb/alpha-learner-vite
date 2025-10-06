@@ -2316,7 +2316,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             }
 
             // Busca proativa de candle específico via REST API
-            async fetchSpecificCandleFromREST(symbol, timestamp, interval = '5m') {
+            async fetchSpecificCandleFromREST(symbol, interval = '5m', timestamp) {
                 try {
                     // Buscar alguns candles ao redor do timestamp alvo
                     const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${timestamp - 600000}&endTime=${timestamp + 600000}&limit=20`;
@@ -5075,8 +5075,8 @@ useEffect(() => {
                                 // Buscar candles ao redor do timestamp de expiração
                                 await marketDataRef.current.fetchSpecificCandleFromREST(
                                     signal.symbol, // Usar símbolo completo (ex: BTCUSDT)
-                                    expirationTimestamp,
-                                    '5m'
+                                    '5m',
+                                    expirationTimestamp
                                 );
                                 console.log(`✅ [PRE-LOAD] Candles pré-carregados com sucesso`);
                             } catch (error) {
@@ -5291,8 +5291,8 @@ useEffect(() => {
                                     try {
                                         await marketDataRef.current.fetchSpecificCandleFromREST(
                                             signal.symbol, // Usar símbolo completo (ex: BTCUSDT)
-                                            expirationTimestamp,
-                                            '5m'
+                                            '5m',
+                                            expirationTimestamp
                                         );
                                         // Tentar buscar novamente após carregar dados
                                         const candleAfterFetch = marketDataRef.current?.getCandleByTimestamp(expirationTimestamp);
