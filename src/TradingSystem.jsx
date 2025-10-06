@@ -4550,6 +4550,128 @@ calculateVolumeScore(volume) {
                 timestamp: null,    // Timestamp da última saída
                 signalId: null      // ID do sinal que gerou essa saída
             });
+
+            // 🎯 Sistema de otimização de sinais - Buffer de candidatos
+            const signalCandidatesBuffer = useRef(new Map()); // Map<entryTime, {signal, timer}>
+            const SIGNAL_OPTIMIZATION = {
+                enabled: true,  // Ativar otimização de sinais
+                sendBeforeEntry: 90000,  // Enviar 1min30s antes da entrada (90 segundos)
+                criteria: 'best_score'  // 'best_score' | 'best_ml' | 'both'
+            };
+
+            // 🎯 Função para comparar qualidade de sinais
+            const compareSignalQuality = (newSignal, existingSignal) => {
+                if (SIGNAL_OPTIMIZATION.criteria === 'best_score') {
+                    return newSignal.score > existingSignal.score;
+                } else if (SIGNAL_OPTIMIZATION.criteria === 'best_ml') {
+                    return (newSignal.mlConfidence || 0) > (existingSignal.mlConfidence || 0);
+                } else if (SIGNAL_OPTIMIZATION.criteria === 'both') {
+                    const newTotal = newSignal.score + (newSignal.mlConfidence || 0) * 100;
+                    const existingTotal = existingSignal.score + (existingSignal.mlConfidence || 0) * 100;
+                    return newTotal > existingTotal;
+                }
+                return false;
+            };
+
+            // 🎯 Função para agendar envio do sinal otimizado
+            const scheduleOptimizedSignal = (signal, entryTimeKey) => {
+                const now = Date.now();
+                const entryTime = signal.entryTime.getTime();
+                const sendTime = entryTime - SIGNAL_OPTIMIZATION.sendBeforeEntry; // 1min30s antes
+                const delay = sendTime - now;
+
+                if (delay > 0) {
+                    console.log(`📅 Sinal agendado para ${new Date(sendTime).toLocaleTimeString('pt-BR')} (em ${Math.floor(delay/1000)}s)`);
+                    console.log(`   Score: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+
+                    const timer = setTimeout(() => {
+                        console.log('%c✅ ENVIANDO MELHOR SINAL!', 'color: #00ff88; font-weight: bold; font-size: 14px;');
+                        console.log(`   📊 Score final: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+
+                        // Enviar o sinal
+                        setSignals(prev => {
+                            const newSignals = [signal, ...prev].slice(0, 10);
+                            newSignals[0].timestamp = new Date();
+                            return newSignals;
+                        });
+
+                        showNotification(`Melhor sinal ${signal.direction} - Score: ${signal.score}%`);
+                        playAlert();
+                        scheduleSignalVerification(signal);
+
+                        // Telegram
+                        if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
+                            window.telegramNotifier.notifySignal(signal);
+                        }
+
+                        // Executar ordem (auto ou manual)
+                        if (orderExecutorRef.current) {
+                            orderExecutorRef.current.executeSignalAuto(
+                                signal,
+                                modeRef.current,
+                                riskAmount
+                            ).then(executionResult => {
+                                if (executionResult.success) {
+                                    showNotification(
+                                        `🤖 ORDEM EXECUTADA: ${signal.direction} @ ${executionResult.executedPrice.toFixed(2)} | ID: ${executionResult.orderId}`
+                                    );
+                                    signal.executed = true;
+                                    signal.executionDetails = executionResult;
+                                    if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
+                                        window.telegramNotifier.notifyExecution(signal, executionResult);
+                                    }
+                                    setSignals(prev => prev.map(s => s.id === signal.id ? signal : s));
+                                } else if (executionResult.reason === 'manual_mode') {
+                                    console.log('✅ Sinal enviado para aprovação manual');
+                                } else {
+                                    showNotification(`⚠️ Erro: ${executionResult.message}`);
+                                }
+                            });
+                        }
+
+                        // Limpar do buffer
+                        signalCandidatesBuffer.current.delete(entryTimeKey);
+                    }, delay);
+
+                    signalCandidatesBuffer.current.set(entryTimeKey, { signal, timer });
+                } else {
+                    console.warn(`⚠️ Sinal ignorado - tempo de envio já passou (delay: ${delay}ms)`);
+                }
+            };
+
+            // 🎯 Função principal de otimização de sinais
+            const handleOptimizedSignal = (signal) => {
+                const entryTimeKey = signal.entryTime.getTime();
+
+                console.log('\n🔍 [OTIMIZAÇÃO] Novo candidato de sinal recebido');
+                console.log(`   ⏰ Entrada: ${signal.entryTime.toLocaleTimeString('pt-BR')}`);
+                console.log(`   📊 Score: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+
+                // Verificar se já existe um candidato para este horário de entrada
+                const existing = signalCandidatesBuffer.current.get(entryTimeKey);
+
+                if (existing) {
+                    console.log('   🔄 Já existe candidato para este horário');
+                    console.log(`      Atual: Score ${existing.signal.score}% | ML ${((existing.signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+
+                    // Comparar qualidade
+                    const isBetter = compareSignalQuality(signal, existing.signal);
+
+                    if (isBetter) {
+                        console.log('%c   ✅ NOVO SINAL É MELHOR! Substituindo...', 'color: #00ff88; font-weight: bold;');
+                        // Cancelar timer anterior
+                        clearTimeout(existing.timer);
+                        // Agendar novo sinal
+                        scheduleOptimizedSignal(signal, entryTimeKey);
+                    } else {
+                        console.log('   ❌ Sinal existente é melhor. Mantendo atual.');
+                    }
+                } else {
+                    console.log('   ✅ Primeiro candidato para este horário. Agendando...');
+                    scheduleOptimizedSignal(signal, entryTimeKey);
+                }
+            };
+
 const modeRef = useRef(mode);
 
 useEffect(() => {
@@ -4951,62 +5073,60 @@ useEffect(() => {
                         }
 
                         if (signal && signal.score >= minScoreRef.current) {
-                            console.log('%c✅ SINAL APROVADO!', 'color: #00ff88; font-weight: bold; font-size: 14px;');
-                            console.log(`   📍 ${signal.direction} ${signal.symbol} @ ${signal.price.toFixed(6)}`);
-                            console.log(`   📊 Score: ${signal.score}% | ML: ${signal.mlConfidence}`);
-                            console.log(`   ⏰ Entrada: ${signal.entryTime.toLocaleTimeString('pt-BR')}`);
-                            console.log(`   🏁 Expiração: ${signal.expirationTime.toLocaleTimeString('pt-BR')}`);
-
-                            // Marcar candle atual como usado
+                            // Marcar candle atual como usado (para ambos os sistemas)
                             lastSignalCandleTime = candleInfo.candleId;
 
-                            setSignals(prev => {
-                                const newSignals = [signal, ...prev];
-                                // Manter apenas os 10 mais recentes
-                                return newSignals.slice(0, 10);
-                            });
-                            showNotification(`Novo sinal ${signal.direction} - Score: ${signal.score}%`);
-                            playAlert();
-                            scheduleSignalVerification(signal);
+                            // 🎯 Sistema de otimização de sinais
+                            if (SIGNAL_OPTIMIZATION.enabled) {
+                                handleOptimizedSignal(signal);
+                            } else {
+                                // Sistema antigo: enviar imediatamente
+                                console.log('%c✅ SINAL APROVADO!', 'color: #00ff88; font-weight: bold; font-size: 14px;');
+                                console.log(`   📍 ${signal.direction} ${signal.symbol} @ ${signal.price.toFixed(6)}`);
+                                console.log(`   📊 Score: ${signal.score}% | ML: ${signal.mlConfidence}`);
+                                console.log(`   ⏰ Entrada: ${signal.entryTime.toLocaleTimeString('pt-BR')}`);
+                                console.log(`   🏁 Expiração: ${signal.expirationTime.toLocaleTimeString('pt-BR')}`);
 
-            if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
-                window.telegramNotifier.notifySignal(signal);
-            }
-            
-            // Processar sinal (automático OU manual)
-            if (orderExecutorRef.current) {
-                const executionResult = await orderExecutorRef.current.executeSignalAuto(
-                    signal,
-                    modeRef.current, // Pode ser 'auto' ou 'manual'
-                    riskAmount
-                );
+                                setSignals(prev => {
+                                    const newSignals = [signal, ...prev];
+                                    // Manter apenas os 10 mais recentes
+                                    return newSignals.slice(0, 10);
+                                });
+                                showNotification(`Novo sinal ${signal.direction} - Score: ${signal.score}%`);
+                                playAlert();
+                                scheduleSignalVerification(signal);
 
-                // Se foi executado automaticamente
-                if (executionResult.success) {
-                    showNotification(
-                        `🤖 ORDEM EXECUTADA: ${signal.direction} @ ${executionResult.executedPrice.toFixed(2)} | ID: ${executionResult.orderId}`
-                    );
+                                // Telegram
+                                if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
+                                    window.telegramNotifier.notifySignal(signal);
+                                }
 
-                    signal.executed = true;
-                    signal.executionDetails = executionResult;
+                                // Processar sinal (automático OU manual)
+                                if (orderExecutorRef.current) {
+                                    const executionResult = await orderExecutorRef.current.executeSignalAuto(
+                                        signal,
+                                        modeRef.current,
+                                        riskAmount
+                                    );
 
-                    if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
-                        window.telegramNotifier.notifyExecution(signal, executionResult);
-                    }
-
-                    // Atualiza o sinal na lista para mostrar que foi executado
-                    setSignals(prev => prev.map(s => s.id === signal.id ? signal : s));
-                }
-                // Se está em modo manual (popup aparecerá automaticamente)
-                else if (executionResult.reason === 'manual_mode') {
-                    console.log('✅ Sinal enviado para aprovação manual - popup deve aparecer');
-                }
-                // Se houve outro erro
-                else {
-                    showNotification(`⚠️ Erro: ${executionResult.message}`);
-                }
-            }
-        } // <--- Fim do IF principal
+                                    if (executionResult.success) {
+                                        showNotification(
+                                            `🤖 ORDEM EXECUTADA: ${signal.direction} @ ${executionResult.executedPrice.toFixed(2)} | ID: ${executionResult.orderId}`
+                                        );
+                                        signal.executed = true;
+                                        signal.executionDetails = executionResult;
+                                        if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
+                                            window.telegramNotifier.notifyExecution(signal, executionResult);
+                                        }
+                                        setSignals(prev => prev.map(s => s.id === signal.id ? signal : s));
+                                    } else if (executionResult.reason === 'manual_mode') {
+                                        console.log('✅ Sinal enviado para aprovação manual');
+                                    } else {
+                                        showNotification(`⚠️ Erro: ${executionResult.message}`);
+                                    }
+                                }
+                            }
+                        } // <--- Fim do IF de aprovação de sinal
 
                     } catch (error) {
                         console.error('❌ [LOOP] Erro:', error);
