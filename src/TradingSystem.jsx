@@ -1563,8 +1563,13 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
         // Salvar logs no Supabase
         if (this.auditLogs.length > 0) {
             const recentLogs = this.auditLogs.slice(-100); // Últimos 100 logs
-            
+
             for (const log of recentLogs) {
+                // ⚠️ SKIP: Não salvar EMPATE no Supabase (constraint não permite)
+                if (log.outcome === 'EMPATE') {
+                    continue;
+                }
+
                 const { error } = await window.supabase
                     .from('audit_logs')
                     .upsert({
@@ -1583,7 +1588,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     }, {
                         onConflict: 'signal_id'
                     });
-                
+
                 if (error && error.code !== '23505') { // Ignora erros de duplicata
                     console.error('Erro ao salvar log:', error);
                 }
@@ -2344,7 +2349,15 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                             console.log(`🔍 [API BINANCE] Candle buscado: ${new Date(timestamp).toLocaleString('pt-BR')}`);
                             console.log(`   📊 OHLC: O=${candle.open.toFixed(2)} H=${candle.high.toFixed(2)} L=${candle.low.toFixed(2)} C=${candle.close.toFixed(2)}`);
                             console.log(`   🎨 Cor API: ${candle.close > candle.open ? 'VERDE 🟢' : candle.close < candle.open ? 'VERMELHO 🔴' : 'DOJI ⚪'}`);
-                            console.log(`   ⚠️ Confira este candle no gráfico da Binance Futures!`);
+
+                            // ⚠️ VALIDAÇÃO: Detectar candles suspeitos (todos valores iguais)
+                            if (candle.open === candle.high && candle.high === candle.low && candle.low === candle.close) {
+                                console.warn(`   ⚠️⚠️⚠️ CANDLE SUSPEITO! Todos valores iguais (OHLC = ${candle.open.toFixed(2)})`);
+                                console.warn(`   ⚠️⚠️⚠️ Isso pode indicar dados incompletos da API!`);
+                                console.warn(`   ⚠️⚠️⚠️ Confira MANUALMENTE no gráfico da Binance Futures!`);
+                            } else {
+                                console.log(`   ⚠️ Confira este candle no gráfico da Binance Futures!`);
+                            }
                         }
 
                         return candle;
