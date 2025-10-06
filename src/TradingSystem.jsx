@@ -5135,8 +5135,11 @@ useEffect(() => {
                                         : s
                                 )
                             );
-                        } else if (entryCandle = marketDataRef.current?.getCandleByTimestamp(entryTimestamp)) {
+                        } else {
                             // 🔗 PRIORIDADE 2: Buscar candle de entrada
+                            const entryCandle = marketDataRef.current?.getCandleByTimestamp(entryTimestamp);
+
+                            if (entryCandle) {
                             // Usar OPEN do candle de entrada (preço real quando candle iniciou)
                             entryCandleData = {
                                 timestamp: entryCandle.timestamp,
@@ -5205,10 +5208,11 @@ useEffect(() => {
                                 };
                                 console.log(`⚠️ [ENTRY] Usando preço previsto (nenhum candle disponível): ${signal.price.toFixed(2)}`);
                             }
+                            }
                         }
 
                         // Notificar execução com preço real
-                        const displayPrice = entryCandleData.open;
+                        const displayPrice = entryCandleData?.open || signal.price;
                         showNotification(`✅ Entrada: ${signal.direction} @ ${displayPrice.toFixed(2)}`);
                     }, timeUntilEntry);
 
@@ -5295,6 +5299,14 @@ useEffect(() => {
                         if (!expirationCandle) {
                             console.error('❌ [BINARY] FALHA: Candle de expiração não disponível');
                             console.error(`   Timestamp esperado: ${new Date(expirationTimestamp).toLocaleString('pt-BR')}`);
+                            verifySignalOutcome(signal, 'EXPIRADO', 0, null);
+                            return;
+                        }
+
+                        // ⚠️ VALIDAÇÃO: entryCandleData deve existir
+                        if (!entryCandleData) {
+                            console.error('❌ [BINARY] FALHA: entryCandleData não disponível');
+                            console.error('   O timer de entrada ainda não executou ou falhou');
                             verifySignalOutcome(signal, 'EXPIRADO', 0, null);
                             return;
                         }
