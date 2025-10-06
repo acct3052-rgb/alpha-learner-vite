@@ -5384,111 +5384,14 @@ useEffect(() => {
                         showNotification(`✅ Entrada: ${signal.direction} @ ${displayPrice.toFixed(2)}`);
                     }, timeUntilEntry);
 
-                    // 🎯 SISTEMA DUPLO DE CAPTURA DA COR DO CANDLE
-                    // 1ª captura: 10s antes (early)
-                    // 2ª captura: 5s antes (final - PRIORIDADE)
-                    let earlyCapture = null;
-                    let finalCapture = null;
+                    // 🎯 VALIDAÇÃO: Usar candle FECHADO via REST API
+                    // REST API da Binance só retorna candles FECHADOS (não em formação)
+                    // Isso garante 100% de precisão no resultado
 
-                    // 📊 CAPTURA 1: 10 segundos antes (early capture via REST API)
-                    const earlyCaptureTime = timeUntilExpiration - 10000;
-                    if (earlyCaptureTime > 0) {
-                        setTimeout(async () => {
-                            console.log(`📊 [EARLY-CAPTURE] Capturando candle 10s antes de fechar via REST...`);
-
-                            try {
-                                const liveCandle = await marketDataRef.current?.fetchSpecificCandleFromREST(
-                                    signal.symbol.toUpperCase(),
-                                    '5m',
-                                    expirationTimestamp
-                                );
-
-                                if (liveCandle && liveCandle.timestamp === expirationTimestamp) {
-                                    earlyCapture = {
-                                        timestamp: liveCandle.timestamp,
-                                        open: liveCandle.open,
-                                        close: liveCandle.close,
-                                        high: liveCandle.high,
-                                        low: liveCandle.low,
-                                        volume: liveCandle.volume,
-                                        captureTime: Date.now(),
-                                        source: 'early_capture'
-                                    };
-
-                                    const variation = earlyCapture.close - earlyCapture.open;
-                                    const color = variation > 0.0001 ? 'VERDE 🟢' : variation < -0.0001 ? 'VERMELHO 🔴' : 'DOJI ⚪';
-
-                                    console.log(`📊 [EARLY-CAPTURE] Captura inicial (10s antes):`);
-                                    console.log(`   📊 OHLC: O=${earlyCapture.open.toFixed(2)} → C=${earlyCapture.close.toFixed(2)}`);
-                                    console.log(`   🎨 COR: ${color}`);
-                                    console.log(`   📏 Variação: ${variation.toFixed(2)} pts`);
-                                } else {
-                                    console.warn(`⚠️ [EARLY-CAPTURE] Candle ainda não disponível na API`);
-                                }
-                            } catch (error) {
-                                console.warn(`⚠️ [EARLY-CAPTURE] Erro ao buscar candle: ${error.message}`);
-                            }
-                        }, earlyCaptureTime);
-                    }
-
-                    // 🎯 CAPTURA 2: 5 segundos antes (final capture via REST API - MAIS CONFIÁVEL)
-                    const finalCaptureTime = timeUntilExpiration - 5000;
-                    if (finalCaptureTime > 0) {
-                        setTimeout(async () => {
-                            console.log(`🎯 [FINAL-CAPTURE] Capturando candle 5s antes de fechar via REST...`);
-
-                            try {
-                                const liveCandle = await marketDataRef.current?.fetchSpecificCandleFromREST(
-                                    signal.symbol.toUpperCase(),
-                                    '5m',
-                                    expirationTimestamp
-                                );
-
-                                if (liveCandle && liveCandle.timestamp === expirationTimestamp) {
-                                    finalCapture = {
-                                        timestamp: liveCandle.timestamp,
-                                        open: liveCandle.open,
-                                        close: liveCandle.close,
-                                        high: liveCandle.high,
-                                        low: liveCandle.low,
-                                        volume: liveCandle.volume,
-                                        captureTime: Date.now(),
-                                        source: 'final_capture'
-                                    };
-
-                                    const variation = finalCapture.close - finalCapture.open;
-                                    const color = variation > 0.0001 ? 'VERDE 🟢' : variation < -0.0001 ? 'VERMELHO 🔴' : 'DOJI ⚪';
-
-                                    console.log(`🎯 [FINAL-CAPTURE] Captura final (5s antes):`);
-                                    console.log(`   📊 OHLC: O=${finalCapture.open.toFixed(2)} → C=${finalCapture.close.toFixed(2)}`);
-                                    console.log(`   🎨 COR: ${color}`);
-                                    console.log(`   📏 Variação: ${variation.toFixed(2)} pts`);
-
-                                    // Comparar com early capture se disponível
-                                    if (earlyCapture) {
-                                        const earlyColor = (earlyCapture.close - earlyCapture.open) > 0.0001 ? 'VERDE' :
-                                                          (earlyCapture.close - earlyCapture.open) < -0.0001 ? 'VERMELHO' : 'DOJI';
-                                        const finalColor = variation > 0.0001 ? 'VERDE' : variation < -0.0001 ? 'VERMELHO' : 'DOJI';
-
-                                        if (earlyColor !== finalColor) {
-                                            console.warn(`⚠️ COR MUDOU! Early: ${earlyColor} → Final: ${finalColor}`);
-                                        } else {
-                                            console.log(`✅ Cor consistente entre capturas: ${finalColor}`);
-                                        }
-                                    }
-                                } else {
-                                    console.warn(`⚠️ [FINAL-CAPTURE] Candle ainda não disponível na API`);
-                                }
-                            } catch (error) {
-                                console.warn(`⚠️ [FINAL-CAPTURE] Erro ao buscar candle: ${error.message}`);
-                            }
-                        }, finalCaptureTime);
-                    }
-
-                    // Validar NO MOMENTO do candle de expiração fechar
+                    // Validar APÓS o candle de expiração fechar
                     // O candle fecha no início do próximo (ex: candle 10:05-10:10 fecha às 10:10:00)
-                    // Usamos as capturas prévias (5s e 10s antes) que já foram feitas
-                    const bufferTime = 1000; // 1 segundo após fechamento (apenas para garantir que captures executaram)
+                    // Aguardamos 2 segundos para a API processar o candle fechado
+                    const bufferTime = 2000; // 2 segundos após fechamento
                     const verificationTimerId = setTimeout(async () => {
                         try {
                             console.log(`⏰ [BINARY] Iniciando verificação sinal ${signal.id.toString().slice(0, 8)}...`);
@@ -5560,46 +5463,14 @@ useEffect(() => {
                         // Open → Close do candle = cor do resultado
                         const minVariation = 0.0001;
 
-                        // 🎯 PRIORIDADE DE USO:
-                        // 1º: FINAL CAPTURE (5s antes) - MAIS CONFIÁVEL
-                        // 2º: EARLY CAPTURE (10s antes) - FALLBACK
-                        // 3º: POST-CLOSE (após fechar) - ÚLTIMO RECURSO
-                        let expirationOpen, expirationClose, candleSource;
+                        // 🎯 Usar candle FECHADO (100% preciso)
+                        const expirationOpen = expirationCandle.open;
+                        const expirationClose = expirationCandle.close;
+                        const candleSource = 'REST-API (candle fechado)';
 
-                        console.log(`\n🔍 [VALIDAÇÃO] Verificando capturas disponíveis:`);
-                        console.log(`   📊 FINAL-CAPTURE (5s antes): ${finalCapture ? '✅ Disponível' : '❌ Não disponível'}`);
-                        console.log(`   📊 EARLY-CAPTURE (10s antes): ${earlyCapture ? '✅ Disponível' : '❌ Não disponível'}`);
-                        console.log(`   📊 POST-CLOSE (após fechar): ${expirationCandle ? '✅ Disponível' : '❌ Não disponível'}`);
-
-                        if (finalCapture) {
-                            // ✅ MELHOR: Usar captura de 5s antes (mais precisa)
-                            expirationOpen = finalCapture.open;
-                            expirationClose = finalCapture.close;
-                            candleSource = 'FINAL-CAPTURE (5s antes)';
-
-                            console.log(`\n🎯 [VALIDAÇÃO FINAL-CAPTURE] Usando captura de 5s antes (MAIS PRECISA):`);
-                            console.log(`   ⏰ Capturado em: ${new Date(finalCapture.captureTime).toLocaleTimeString('pt-BR')}`);
-                            console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
-                        } else if (earlyCapture) {
-                            // ⚠️ FALLBACK 1: Usar captura de 10s antes
-                            expirationOpen = earlyCapture.open;
-                            expirationClose = earlyCapture.close;
-                            candleSource = 'EARLY-CAPTURE (10s antes)';
-
-                            console.log(`\n📊 [VALIDAÇÃO EARLY-CAPTURE] Final capture falhou, usando early (10s antes):`);
-                            console.log(`   ⏰ Capturado em: ${new Date(earlyCapture.captureTime).toLocaleTimeString('pt-BR')}`);
-                            console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
-                            console.warn(`   ⚠️ ATENÇÃO: Cor pode ter mudado nos últimos 5s!`);
-                        } else {
-                            // ⚠️ FALLBACK 2: Usar candle fechado (pode ter mudado de cor)
-                            expirationOpen = expirationCandle.open;
-                            expirationClose = expirationCandle.close;
-                            candleSource = 'POST-CLOSE (após fechar)';
-
-                            console.log(`\n⚠️⚠️⚠️ [VALIDAÇÃO POST-CLOSE] NENHUMA captura prévia disponível!`);
-                            console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
-                            console.warn(`   ⚠️⚠️⚠️ ATENÇÃO: Cor pode ter mudado após fechamento!`);
-                        }
+                        console.log(`\n🔍 [VALIDAÇÃO] Usando candle FECHADO da API REST:`);
+                        console.log(`   ✅ Precisão: 100% (candle já fechou)`);
+                        console.log(`   📊 OHLC: O=${expirationOpen.toFixed(2)} → C=${expirationClose.toFixed(2)}`);
 
                         // 🎨 DETERMINAR COR DO CANDLE (Open → Close do candle de expiração)
                         const candleVariation = expirationClose - expirationOpen;
