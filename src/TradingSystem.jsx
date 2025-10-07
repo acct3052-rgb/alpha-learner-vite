@@ -5351,6 +5351,7 @@ useEffect(() => {
                                         signal.actualEntryPrice = previousCandle.close;
                                         signal.entryPriceUpdated = true;
 
+                                        console.log(`✅ [ENTRY] Preço de entrada real (${previousCandle.close.toFixed(2)}) salvo no objeto do sinal.`);
                                         console.log(`✅ [ENTRY] Usando Close do candle anterior (via REST)`);
                                         console.log(`   📌 Candle anterior: ${new Date(previousTimestamp).toLocaleTimeString('pt-BR')}`);
                                         console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
@@ -5372,6 +5373,8 @@ useEffect(() => {
                                             close: signal.price,
                                             source: 'predicted'
                                         };
+                                        signal.actualEntryPrice = signal.price; // Usa o previsto como fallback
+                                        console.log(`⚠️ [ENTRY] Usando preço previsto como entrada real: ${signal.price.toFixed(2)}`);
                                         console.log(`⚠️ [ENTRY] Usando preço previsto (candle anterior não disponível ou inválido)`);
                                         console.log(`   💰 Preço previsto: ${signal.price.toFixed(2)}`);
                                     }
@@ -5459,11 +5462,10 @@ useEffect(() => {
                         }
 
                         // ⚠️ VALIDAÇÃO: entryCandleData deve existir
-                        if (!entryCandleData) {
-                            console.error('❌ [BINARY] FALHA: entryCandleData não disponível');
-                            console.error('   O timer de entrada ainda não executou ou falhou');
-                            verifySignalOutcome(signal, 'EXPIRADO', 0, null);
-                            return;
+                        if (!signal.actualEntryPrice) {
+                          console.error('❌ [BINARY] FALHA: Preço de entrada real (actualEntryPrice) não foi definido no sinal.');
+                          verifySignalOutcome(signal, 'EXPIRADO', 0, null);
+                             return;
                         }
 
                         // ✅ VALIDAÇÃO ÚNICA: COR DO CANDLE DE EXPIRAÇÃO
@@ -5496,7 +5498,7 @@ useEffect(() => {
 
                         // 📊 INFO ADICIONAL: Mostrar encadeamento se houver
                         if (entryCandleData.source === 'chained') {
-                            const entryPrice = entryCandleData.open;
+                            const entryPrice = signal.actualEntryPrice;;
                             const pnlVariation = expirationClose - entryPrice;
                             console.log(`\n💰 [ENCADEAMENTO] Variação financeira (entrada→saída):`);
                             console.log(`   📥 Entrada (saída anterior): ${entryPrice.toFixed(2)}`);
@@ -5647,16 +5649,16 @@ useEffect(() => {
                                 };
 
                                 // Preços reais para ML
-                                signal.realEntryPrice = entryCandleData.open;
+                                 signal.realEntryPrice = signal.actualEntryPrice; // ✅ USE O PREÇO SALVO
                                 signal.realExitPrice = expirationClose;
                                 signal.realPnL = pnl;
                                 signal.predictedPrice = signal.price; // Guardar previsão original
 
                                 if (hasReliableEntry) {
                                     // ✅ Entrada confiável: TREINAR ML
-                                    console.log(`🧠 [ML] Aprendendo com preços REAIS (${entryCandleData.source}):`);
-                                    console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${entryCandleData.open.toFixed(2)}`);
-                                    console.log(`   Erro de previsão: ${(entryCandleData.open - signal.price).toFixed(2)} pts`);
+                                     console.log(`🧠 [ML] Aprendendo com preços REAIS (${entryCandleData.source}):`);
+                                     console.log(`   Previsto: ${signal.price.toFixed(2)} | Real: ${signal.actualEntryPrice.toFixed(2)}`); // ✅ USE O PREÇO SALVO
+                                     console.log(`   Erro de previsão: ${(signal.actualEntryPrice - signal.price).toFixed(2)} pts`); // ✅ USE O PREÇO SALVO
 
                                     alphaEngine.learnFromTrade(signal, result);
                                 } else {
@@ -9080,4 +9082,5 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
 
 // Exportar componente principal
 export default App
+
 
