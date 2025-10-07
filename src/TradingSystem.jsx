@@ -6227,8 +6227,8 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                     setTimeToEntry(remaining);
 
                     // Fechar popup automaticamente após 60s sem interação
-                    if (popupDisplayTime >= 60 && orderExecutor) {
-                        console.log('⏰ Popup exibido por 60s sem interação - fechando automaticamente');
+                    if (popupDisplayTime >= 30 && orderExecutor) {
+                        console.log('⏰ Popup exibido por 30s sem interação - fechando automaticamente');
                         orderExecutor.ignoreManualSignal();
                         showNotification('⏱️ Popup recolhido automaticamente', 'info');
                         return;
@@ -9080,3 +9080,4 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
 
 // Exportar componente principal
 export default App
+
