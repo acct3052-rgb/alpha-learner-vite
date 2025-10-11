@@ -2280,6 +2280,8 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 this.timeframe = 'M5';
                 this.lastPriceCheck = null;
                 this.stuckPriceCount = 0;
+                this.lastStuckCheckTime = 0; // ✅ NOVO: Controle temporal das verificações
+                this.symbol = null; // ✅ NOVO: Armazenar símbolo atual
                 this.binanceWs = null;
                 this.wsReconnectAttempts = 0;
                 this.maxReconnectAttempts = 100; // Aumentado para manter conexão
@@ -2440,8 +2442,11 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     }
                 }
 
+                // ✅ Armazenar símbolo para uso em ações corretivas
+                this.symbol = symbol.toUpperCase();
+
                 // Carregar dados históricos via REST antes de conectar WebSocket
-                this.fetchKlinesFromREST(symbol.toUpperCase(), interval, 200);
+                this.fetchKlinesFromREST(this.symbol, interval, 200);
 
                 // Usar WebSocket de Futures (não Spot)
                 const wsUrl = `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@kline_${interval}`;
@@ -2558,17 +2563,28 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             }
 
             startPingPong(symbol, interval, onUpdate) {
-                // Monitorar saúde da conexão a cada 3 minutos
+                // 🛡️ MONITORAMENTO INTELIGENTE: Verificação escalonada
                 this.pingInterval = setInterval(() => {
                     const timeSinceLastPong = Date.now() - this.lastPongTime;
 
-                    if (timeSinceLastPong > 180000) { // 3 minutos sem dados
-                        console.warn('⚠️ WebSocket sem resposta há', Math.floor(timeSinceLastPong/1000), 's. Reconectando...');
+                    if (timeSinceLastPong > 300000) { // 5 minutos - CRÍTICO
+                        console.error('🚨 WebSocket MORTO há', Math.floor(timeSinceLastPong/1000), 's. Reconectando imediatamente...');
                         this.binanceWs.close();
+                    } else if (timeSinceLastPong > 180000) { // 3 minutos - ALERTA
+                        console.warn('⚠️ WebSocket lento há', Math.floor(timeSinceLastPong/1000), 's. Monitorando...');
+                        // Não reconectar ainda, apenas alertar
+                    } else if (timeSinceLastPong > 60000) { // 1 minuto - INFO
+                        // Log silencioso (apenas de vez em quando)
+                        if (Math.random() < 0.3) {
+                            console.log('🔄 WebSocket ativo. Último dado há', Math.floor(timeSinceLastPong/1000), 's');
+                        }
                     } else {
-                        console.log('💓 WebSocket saudável. Último dado há', Math.floor(timeSinceLastPong/1000), 's');
+                        // Tudo OK - log muito esporádico
+                        if (Math.random() < 0.1) {
+                            console.log('💓 WebSocket saudável. Último dado há', Math.floor(timeSinceLastPong/1000), 's');
+                        }
                     }
-                }, 180000); // Check a cada 3 minutos
+                }, 120000); // Check a cada 2 minutos (otimizado)
             }
 
             startRestApiPolling(symbol, interval, onUpdate) {
@@ -2600,19 +2616,44 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             getLatestPrice() {
                 // Priorizar candle atual em formação (mais recente)
                 if (this.currentCandle) {
-                    // 🔍 LOG detalhado quando detectar preço repetido
-                    if (this.lastPriceCheck && this.lastPriceCheck.close === this.currentCandle.close && this.lastPriceCheck.timestamp === this.currentCandle.timestamp) {
-                        this.stuckPriceCount++;
-                        if (this.stuckPriceCount === 5 || this.stuckPriceCount === 10 || this.stuckPriceCount === 15) {
-                            console.error(`❌ [MARKETDATA] CurrentCandle TRAVADO há ${this.stuckPriceCount} chamadas:`);
-                            console.error(`   Preço: $${this.currentCandle.close.toFixed(2)}`);
-                            console.error(`   Timestamp WS: ${new Date(this.currentCandle.timestamp).toLocaleString('pt-BR')}`);
-                            console.error(`   Há quanto tempo: ${Math.floor((Date.now() - this.lastPongTime) / 1000)}s desde último update`);
+                    // 🔍 SISTEMA INTELIGENTE: Verificar apenas quando necessário
+                    const now = Date.now();
+                    const timeSinceLastCheck = now - (this.lastStuckCheckTime || 0);
+                    
+                    // Verificar preço travado apenas a cada 30 segundos (não a cada chamada)
+                    if (timeSinceLastCheck > 30000) { // 30 segundos
+                        if (this.lastPriceCheck && 
+                            this.lastPriceCheck.close === this.currentCandle.close && 
+                            this.lastPriceCheck.timestamp === this.currentCandle.timestamp) {
+                            
+                            this.stuckPriceCount++;
+                            
+                            // Logs mais espaçados e informativos
+                            if (this.stuckPriceCount === 3) {
+                                console.warn(`⚠️ [MARKETDATA] Preço pode estar travado:`);
+                                console.warn(`   Preço: $${this.currentCandle.close.toFixed(6)}`);
+                                console.warn(`   Timestamp: ${new Date(this.currentCandle.timestamp).toLocaleString('pt-BR')}`);
+                                console.warn(`   ⏰ Últimos dados WS: ${Math.floor((now - this.lastPongTime) / 1000)}s atrás`);
+                                
+                                // ✅ AÇÃO CORRETIVA: Forçar refresh via REST API
+                                if (this.stuckPriceCount >= 5) {
+                                    console.error(`🔄 AÇÃO CORRETIVA: Forçando busca via REST API...`);
+                                    this.fetchKlinesFromREST(this.symbol || 'BTCUSDT', '5m', 10);
+                                    this.stuckPriceCount = 0; // Reset após ação corretiva
+                                }
+                            }
+                        } else {
+                            // Preço mudou - resetar contador
+                            if (this.stuckPriceCount > 0) {
+                                console.log(`✅ [MARKETDATA] Preço destravado: ${this.lastPriceCheck?.close?.toFixed(6)} → ${this.currentCandle.close.toFixed(6)}`);
+                                this.stuckPriceCount = 0;
+                            }
                         }
-                    } else {
-                        this.stuckPriceCount = 0;
+                        
+                        this.lastStuckCheckTime = now;
+                        this.lastPriceCheck = { ...this.currentCandle };
                     }
-                    this.lastPriceCheck = this.currentCandle;
+                    
                     return this.currentCandle;
                 }
 
@@ -2623,21 +2664,34 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 
                 const latestPrice = this.prices[this.prices.length - 1];
 
-                // 🔄 MUDANÇA: Usar timestamp como referência primária
-                if (this.lastPriceCheck &&
-                    this.lastPriceCheck.timestamp === latestPrice.timestamp &&
-                    this.lastPriceCheck.close === latestPrice.close) {
-                    this.stuckPriceCount++;
-                    if (this.stuckPriceCount > 3) {
-                        console.warn('⚠️ PREÇO TRAVADO detectado! Mesmo preço por', this.stuckPriceCount, 'verificações');
-                        console.warn('   Último preço:', latestPrice.close);
-                        console.warn('   Timestamp:', new Date(latestPrice.timestamp).toLocaleString('pt-BR'));
+                // 🔄 Verificação inteligente para candles históricos (menos frequente)
+                const now = Date.now();
+                const timeSinceLastCheck = now - (this.lastStuckCheckTime || 0);
+                
+                if (timeSinceLastCheck > 45000) { // 45 segundos para históricos
+                    if (this.lastPriceCheck &&
+                        this.lastPriceCheck.timestamp === latestPrice.timestamp &&
+                        this.lastPriceCheck.close === latestPrice.close) {
+                        
+                        this.stuckPriceCount++;
+                        if (this.stuckPriceCount === 2) {
+                            console.warn(`⚠️ [HISTORICAL] Dados históricos travados: ${latestPrice.close.toFixed(6)}`);
+                            console.warn(`   Timestamp: ${new Date(latestPrice.timestamp).toLocaleString('pt-BR')}`);
+                            
+                            // Ação corretiva para dados históricos
+                            if (this.fetchKlinesFromREST) {
+                                this.fetchKlinesFromREST(this.symbol || 'BTCUSDT', '5m', 20);
+                                this.stuckPriceCount = 0;
+                            }
+                        }
+                    } else {
+                        this.stuckPriceCount = 0;
                     }
-                } else {
-                    this.stuckPriceCount = 0;
+                    
+                    this.lastStuckCheckTime = now;
+                    this.lastPriceCheck = { ...latestPrice };
                 }
 
-                this.lastPriceCheck = { ...latestPrice };
                 return latestPrice;
             }
 
@@ -5027,26 +5081,31 @@ useEffect(() => {
                             marketData.replaceWithRealData(realData);
                             setDataSource('REAL');
 
-                            // Verificar mudança de preço (usando timestamp como referência primária)
+                            // 💰 Verificar dados atualizados (com logs otimizados)
                             const currentPrice = marketData.getLatestPrice();
                             if (currentPrice) {
-                                console.log(`   💰 Preço atual: ${currentPrice.close.toFixed(6)}`);
+                                // Log do preço apenas de vez em quando (não todo loop)
+                                if (Math.random() < 0.1) { // 10% das vezes
+                                    console.log(`   💰 Preço atual: ${currentPrice.close.toFixed(6)} (${new Date(currentPrice.timestamp).toLocaleTimeString('pt-BR')})`);
+                                }
 
                                 if (lastKnownPrice) {
-                                    const priceDiff = Math.abs(currentPrice.close - lastKnownPrice.close);
-                                    console.log(`   📊 Variação: ${priceDiff.toFixed(6)} (${((priceDiff/lastKnownPrice.close)*100).toFixed(4)}%)`);
-
-                                    // 🔄 MUDANÇA: Comparar timestamp E preço
+                                    // 🔄 Verificação inteligente de mudança
                                     if (currentPrice.timestamp === lastKnownPrice.timestamp &&
                                         currentPrice.close === lastKnownPrice.close) {
                                         samePriceCount++;
-                                        if (samePriceCount > 2) {
-                                            console.warn(`   ⚠️ Mesmo candle e preço por ${samePriceCount} iterações`);
-                                            console.warn(`   ⚠️ Timestamp: ${new Date(currentPrice.timestamp).toLocaleTimeString('pt-BR')}`);
+                                        
+                                        // Alertar apenas se crítico (>3 iterações)
+                                        if (samePriceCount === 4) {
+                                            console.warn(`   ⚠️ ALERTA: ${samePriceCount} iterações sem mudança de dados`);
+                                            console.warn(`   📅 Timestamp fixo: ${new Date(currentPrice.timestamp).toLocaleTimeString('pt-BR')}`);
+                                            console.warn(`   💡 Pode indicar problema no WebSocket ou API`);
                                         }
                                     } else {
-                                        if (samePriceCount > 0) {
-                                            console.log(`   ✅ Candle/Preço mudou! ${lastKnownPrice.close.toFixed(6)} → ${currentPrice.close.toFixed(6)}`);
+                                        // Dados mudaram - log positivo (mas esporádico)
+                                        if (samePriceCount > 1) {
+                                            const priceDiff = Math.abs(currentPrice.close - lastKnownPrice.close);
+                                            console.log(`   ✅ Dados atualizados! Δ: ${priceDiff.toFixed(6)} (${((priceDiff/lastKnownPrice.close)*100).toFixed(4)}%)`);
                                         }
                                         samePriceCount = 0;
                                     }
@@ -5155,19 +5214,20 @@ useEffect(() => {
                     }
                 };
 
-                // ⚡ INICIALIZAÇÃO: ANÁLISE CONTÍNUA PARA OTIMIZAÇÃO
+                // ⚡ INICIALIZAÇÃO: ANÁLISE CONTÍNUA OTIMIZADA
                 console.log('🚀 Alpha Engine ativado! Sistema de otimização de sinais...');
 
                 const candleInfo = getCandleInfo();
                 const MIN_TIME_BEFORE_CLOSE = 60; // 60 segundos
-                const ANALYSIS_INTERVAL = 60000; // 60 segundos (1 minuto)
+                const ANALYSIS_INTERVAL = 30000; // 30 segundos (otimizado para menos spam)
 
-                console.log('🔄 Sistema de análise contínua iniciado');
-                console.log(`   🔄 Intervalo: ${ANALYSIS_INTERVAL/1000}s (monitoramento contínuo)`);
+                console.log('🔄 Sistema de análise contínua iniciado (OTIMIZADO)');
+                console.log(`   🔄 Intervalo: ${ANALYSIS_INTERVAL/1000}s (reduzido para menos spam)`);
                 console.log(`   🎯 Sinais enviados: 60s (1min) antes da entrada`);
                 console.log(`   ⚠️ Tempo mínimo antes do fechamento: ${MIN_TIME_BEFORE_CLOSE}s`);
                 console.log('   🚫 Filtro de duplicados: ATIVO');
                 console.log('   📊 Sistema de otimização: ATIVO');
+                console.log('   🛡️ Detecção inteligente de preços travados: ATIVO');
 
                 // ⚡ EXECUTAR PRIMEIRA ANÁLISE IMEDIATAMENTE
                 console.log(`\n⏰ Candle atual: ${candleInfo.candleStart.toLocaleTimeString('pt-BR')}`);
