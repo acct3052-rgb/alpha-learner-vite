@@ -4862,6 +4862,8 @@ useEffect(() => {
                     verificationTimers.current.forEach((timerData) => {
                         if (timerData.timer) clearTimeout(timerData.timer);
                         if (timerData.entryTimer) clearTimeout(timerData.entryTimer);
+                        if (timerData.monitoringTimer) clearTimeout(timerData.monitoringTimer);
+                        if (timerData.monitoringInterval) clearInterval(timerData.monitoringInterval);
                         if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
                     });
                     verificationTimers.current.clear();
@@ -5257,6 +5259,8 @@ useEffect(() => {
                     verificationTimers.current.set(signal.id, {
                         timer: null,
                         entryTimer: null,
+                        monitoringTimer: null,
+                        monitoringInterval: null,
                         safetyTimeout: null
                     });
 
@@ -5404,6 +5408,65 @@ useEffect(() => {
                         const displayPrice = entryCandleData?.open || signal.price;
                         showNotification(`✅ Entrada: ${signal.direction} @ ${displayPrice.toFixed(2)}`);
                     }, timeUntilEntry);
+
+                    // 🔗 MONITORAMENTO DE PREÇO: Capturar preço real nos últimos 10s antes do fechamento
+                    // Monitora a cada 2s e salva o último preço como entrada para encadeamento
+                    const monitoringStartTime = expirationTime - 10000; // 10s antes do fechamento
+                    const timeUntilMonitoring = Math.max(0, monitoringStartTime - now);
+                    let lastCapturedPrice = null;
+
+                    const monitoringTimer = setTimeout(() => {
+                        console.log(`📊 [MONITOR] Iniciando captura de preço (últimos 10s antes do fechamento)`);
+                        console.log(`   Candle: ${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')}`);
+
+                        // Capturar preço imediatamente
+                        const currentPrice = marketDataRef.current?.getLatestPrice();
+                        if (currentPrice?.close) {
+                            lastCapturedPrice = currentPrice.close;
+                            console.log(`   📍 Preço capturado: ${lastCapturedPrice.toFixed(2)}`);
+                        }
+
+                        // Monitorar a cada 2 segundos
+                        const monitoringInterval = setInterval(() => {
+                            const price = marketDataRef.current?.getLatestPrice();
+                            if (price?.close) {
+                                lastCapturedPrice = price.close;
+                                console.log(`   📍 Preço atualizado: ${lastCapturedPrice.toFixed(2)}`);
+                            }
+                        }, 2000); // A cada 2 segundos
+
+                        // Armazenar referência do interval para cleanup
+                        const timers = verificationTimers.current.get(signal.id);
+                        if (timers) {
+                            timers.monitoringInterval = monitoringInterval;
+                        }
+
+                        // Parar monitoramento após 10 segundos
+                        setTimeout(() => {
+                            if (monitoringInterval) {
+                                clearInterval(monitoringInterval);
+                                console.log(`   ✅ Monitoramento finalizado. Último preço: ${lastCapturedPrice?.toFixed(2) || 'N/A'}`);
+
+                                // 🔗 SALVAR preço como entrada para próximo sinal (ENCADEAMENTO)
+                                if (lastCapturedPrice) {
+                                    lastConfirmedExit.current = {
+                                        price: lastCapturedPrice,
+                                        timestamp: expirationTimestamp,
+                                        signalId: signal.id,
+                                        source: 'monitoring' // Indica que foi capturado via monitoramento
+                                    };
+                                    console.log(`🔗 [CHAIN] Preço de saída salvo (monitoramento): ${lastCapturedPrice.toFixed(2)}`);
+                                }
+                            }
+                        }, 10000); // 10 segundos de monitoramento
+
+                    }, timeUntilMonitoring);
+
+                    // Armazenar referência do timer
+                    const timers = verificationTimers.current.get(signal.id);
+                    if (timers) {
+                        timers.monitoringTimer = monitoringTimer;
+                    }
 
                     // 🎯 VALIDAÇÃO: Usar candle FECHADO via REST API
                     // REST API da Binance só retorna candles FECHADOS (não em formação)
