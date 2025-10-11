@@ -7038,11 +7038,45 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
            
             
 
-            // NOVO: Atualizar métricas quando alphaEngine ou updateTrigger mudar
+            // NOVO: Atualizar métricas usando auditSystem com filtro de 24h
             useEffect(() => {
                 const updateMetrics = async () => {
                     try {
-                        // Priorizar dados do Supabase/MemoryDB (mais confiáveis)
+                        // Usar auditSystem para dados consistentes (mesma fonte das Métricas Avançadas)
+                        if (window.auditSystemRef) {
+                            const logs = await window.auditSystemRef.getRecentLogs(200, true); // forceReload = true
+                            
+                            if (Array.isArray(logs) && logs.length > 0) {
+                                // Filtrar apenas últimas 24 horas
+                                const cutoffDate = new Date();
+                                cutoffDate.setHours(cutoffDate.getHours() - 24);
+                                
+                                const dailyLogs = logs.filter(l => 
+                                    l.outcome && 
+                                    l.outcome !== 'PENDENTE' && 
+                                    new Date(l.generatedAt) >= cutoffDate
+                                );
+
+                                if (dailyLogs.length > 0) {
+                                    const wins = dailyLogs.filter(l => l.outcome === 'ACERTO');
+                                    const totalPnL = dailyLogs.reduce((sum, l) => sum + (l.prices?.finalPnL || 0), 0);
+                                    const winRate = (wins.length / dailyLogs.length) * 100;
+
+                                    console.log(`📊 [DASHBOARD] Métricas 24h: ${dailyLogs.length} sinais, ${wins.length} acertos, ${winRate.toFixed(1)}% taxa, P&L: ${totalPnL.toFixed(2)}`);
+
+                                    setMetrics({
+                                        winRate: winRate || 0,
+                                        totalPnL: totalPnL || 0,
+                                        totalSignals: dailyLogs.length || 0
+                                    });
+                                    return;
+                                } else {
+                                    console.log('📊 [DASHBOARD] Nenhum sinal nas últimas 24h encontrado nos logs de auditoria');
+                                }
+                            }
+                        }
+
+                        // Fallback 1: usar memoryDB se auditSystem não disponível
                         if (memoryDB) {
                             const dbStats = await memoryDB.getStatistics();
                             if (dbStats && dbStats.total > 0) {
@@ -7055,7 +7089,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             }
                         }
 
-                        // Fallback: usar alphaEngine.performance se MemoryDB não disponível
+                        // Fallback 2: usar alphaEngine.performance se outros não disponíveis
                         if (alphaEngine && alphaEngine.performance) {
                             setMetrics({
                                 winRate: alphaEngine.performance.winRate || 0,
@@ -7066,7 +7100,8 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
                         }
                     } catch (error) {
-                        console.error('Erro ao atualizar métricas:', error);
+                        console.error('Erro ao atualizar métricas do dashboard:', error);
+                        setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
                     }
                 };
 
@@ -7151,6 +7186,9 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
                         <div className="card">
                             <h3>📊 Métricas em Tempo Real</h3>
+                            <div style={{ fontSize: '12px', color: '#a0a0a0', marginBottom: '15px' }}>
+                                ⏰ Dados das últimas 24 horas • Atualização a cada 2s
+                            </div>
                             <div className="metric-grid">
                                 <div className="metric-card">
                                     <div className="metric-value">{signals ? signals.length : 0}</div>
@@ -7158,7 +7196,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                 </div>
                                 <div className="metric-card">
                                     <div className="metric-value">{metrics.winRate.toFixed(1)}%</div>
-                                    <div className="metric-label">Taxa de Acerto</div>
+                                    <div className="metric-label">Taxa de Acerto (24h)</div>
                                 </div>
                                 <div className="metric-card">
                                     <div className="metric-value" style={{ 
@@ -7167,7 +7205,11 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                     }}>
                                         {formatBRL(metrics.totalPnL)}
                                     </div>
-                                    <div className="metric-label">P&L Acumulado</div>
+                                    <div className="metric-label">P&L Diário</div>
+                                </div>
+                                <div className="metric-card">
+                                    <div className="metric-value">{metrics.totalSignals}</div>
+                                    <div className="metric-label">Sinais (24h)</div>
                                 </div>
                             </div>
                         </div>
