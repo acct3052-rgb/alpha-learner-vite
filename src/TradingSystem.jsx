@@ -5426,14 +5426,14 @@ useEffect(() => {
                             console.log(`   📍 Preço capturado: ${lastCapturedPrice.toFixed(2)}`);
                         }
 
-                        // Monitorar a cada 2 segundos
+                        // Monitorar a cada 5 segundos
                         const monitoringInterval = setInterval(() => {
                             const price = marketDataRef.current?.getLatestPrice();
                             if (price?.close) {
                                 lastCapturedPrice = price.close;
                                 console.log(`   📍 Preço atualizado: ${lastCapturedPrice.toFixed(2)}`);
                             }
-                        }, 2000); // A cada 2 segundos
+                        }, 5000); // A cada 5 segundos
 
                         // Armazenar referência do interval para cleanup
                         const timers = verificationTimers.current.get(signal.id);
@@ -5649,12 +5649,19 @@ useEffect(() => {
                         verificationTimers.current.delete(signal.id);
 
                         // 🔗 SALVAR preço de saída para próximo sinal (ENCADEAMENTO)
-                        lastConfirmedExit.current = {
-                            price: expirationClose,
-                            timestamp: expirationTimestamp,
-                            signalId: signal.id
-                        };
-                        console.log(`🔗 [CHAIN] Preço de saída salvo para próximo sinal: ${expirationClose.toFixed(2)}`);
+                        // ⚠️ IMPORTANTE: Só sobrescrever se NÃO foi salvo pelo monitoramento
+                        if (lastConfirmedExit.current.signalId !== signal.id ||
+                            lastConfirmedExit.current.source !== 'monitoring') {
+                            lastConfirmedExit.current = {
+                                price: expirationClose,
+                                timestamp: expirationTimestamp,
+                                signalId: signal.id,
+                                source: 'validation' // Indica que veio da validação, não do monitoramento
+                            };
+                            console.log(`🔗 [CHAIN] Preço de saída salvo para próximo sinal (validação): ${expirationClose.toFixed(2)}`);
+                        } else {
+                            console.log(`🔗 [CHAIN] Mantendo preço do monitoramento (${lastConfirmedExit.current.price.toFixed(2)}), ignorando REST API (${expirationClose.toFixed(2)})`);
+                        }
 
                         // Atualizar estado dos sinais
                         signal.status = result;
@@ -5722,14 +5729,14 @@ useEffect(() => {
                                 // Dados do candle de EXPIRAÇÃO (preço real de saída)
                                 signal.expirationCandle = {
                                     timestamp: expirationTimestamp,
-                                    open: expirationOpen,
-                                    close: expirationClose,  // 🎯 Preço REAL de saída
+                                    open: entryPrice,  // Entrada (pode ser open ou lastConfirmedExit)
+                                    close: exitPrice,  // 🎯 Preço REAL de saída
                                     high: expirationCandle.high,
                                     low: expirationCandle.low,
                                     color: candleColor,
                                     isGreen: isCandleGreen,
                                     isRed: isCandleRed,
-                                    bodySize: Math.abs(candleVariation), // Variação do candle (Open→Close)
+                                    bodySize: Math.abs(candleVariation), // Variação (entrada→saída)
                                     variation: candleVariation  // 🎯 Variação do candle
                                 };
 
