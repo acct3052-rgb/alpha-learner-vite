@@ -2500,12 +2500,15 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                                 }
                             } else {
                                 // Candle em formação - atualizar em tempo real
-                                const priceChanged = !this.currentCandle || this.currentCandle.close !== candle.close;
+                                // 🔄 MUDANÇA: Usar timestamp como referência primária, não o preço
+                                const candleChanged = !this.currentCandle ||
+                                                     this.currentCandle.timestamp !== candle.timestamp ||
+                                                     this.currentCandle.close !== candle.close;
 
                                 this.currentCandle = candle;
 
                                 // 🔍 LOG para debug de atualização
-                                if (priceChanged && Math.random() < 0.01) { // Log 1% das atualizações para não poluir
+                                if (candleChanged && Math.random() < 0.01) { // Log 1% das atualizações para não poluir
                                     console.log(`📊 [WS] CurrentCandle atualizado: $${candle.close.toFixed(2)} (${new Date(candle.timestamp).toLocaleTimeString('pt-BR')})`);
                                 }
 
@@ -2620,11 +2623,15 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 
                 const latestPrice = this.prices[this.prices.length - 1];
 
-                if (this.lastPriceCheck && this.lastPriceCheck.close === latestPrice.close) {
+                // 🔄 MUDANÇA: Usar timestamp como referência primária
+                if (this.lastPriceCheck &&
+                    this.lastPriceCheck.timestamp === latestPrice.timestamp &&
+                    this.lastPriceCheck.close === latestPrice.close) {
                     this.stuckPriceCount++;
                     if (this.stuckPriceCount > 3) {
                         console.warn('⚠️ PREÇO TRAVADO detectado! Mesmo preço por', this.stuckPriceCount, 'verificações');
                         console.warn('   Último preço:', latestPrice.close);
+                        console.warn('   Timestamp:', new Date(latestPrice.timestamp).toLocaleString('pt-BR'));
                     }
                 } else {
                     this.stuckPriceCount = 0;
@@ -5018,28 +5025,31 @@ useEffect(() => {
                             marketData.replaceWithRealData(realData);
                             setDataSource('REAL');
 
-                            // Verificar mudança de preço
+                            // Verificar mudança de preço (usando timestamp como referência primária)
                             const currentPrice = marketData.getLatestPrice();
                             if (currentPrice) {
                                 console.log(`   💰 Preço atual: ${currentPrice.close.toFixed(6)}`);
 
                                 if (lastKnownPrice) {
-                                    const priceDiff = Math.abs(currentPrice.close - lastKnownPrice);
-                                    console.log(`   📊 Variação: ${priceDiff.toFixed(6)} (${((priceDiff/lastKnownPrice)*100).toFixed(4)}%)`);
+                                    const priceDiff = Math.abs(currentPrice.close - lastKnownPrice.close);
+                                    console.log(`   📊 Variação: ${priceDiff.toFixed(6)} (${((priceDiff/lastKnownPrice.close)*100).toFixed(4)}%)`);
 
-                                    if (currentPrice.close === lastKnownPrice) {
+                                    // 🔄 MUDANÇA: Comparar timestamp E preço
+                                    if (currentPrice.timestamp === lastKnownPrice.timestamp &&
+                                        currentPrice.close === lastKnownPrice.close) {
                                         samePriceCount++;
                                         if (samePriceCount > 2) {
-                                            console.warn(`   ⚠️ Preço exatamente igual por ${samePriceCount} iterações`);
+                                            console.warn(`   ⚠️ Mesmo candle e preço por ${samePriceCount} iterações`);
+                                            console.warn(`   ⚠️ Timestamp: ${new Date(currentPrice.timestamp).toLocaleTimeString('pt-BR')}`);
                                         }
                                     } else {
                                         if (samePriceCount > 0) {
-                                            console.log(`   ✅ Preço mudou! Era ${lastKnownPrice.toFixed(6)} agora ${currentPrice.close.toFixed(6)}`);
+                                            console.log(`   ✅ Candle/Preço mudou! ${lastKnownPrice.close.toFixed(6)} → ${currentPrice.close.toFixed(6)}`);
                                         }
                                         samePriceCount = 0;
                                     }
                                 }
-                                lastKnownPrice = currentPrice.close;
+                                lastKnownPrice = currentPrice;
                             }
 
                         } catch (error) {
