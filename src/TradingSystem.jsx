@@ -2505,7 +2505,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                                 this.currentCandle = candle;
 
                                 // 🔍 LOG para debug de atualização
-                                if (priceChanged && Math.random() < 0.1) { // Log 10% das atualizações para não poluir
+                                if (priceChanged && Math.random() < 0.01) { // Log 1% das atualizações para não poluir
                                     console.log(`📊 [WS] CurrentCandle atualizado: $${candle.close.toFixed(2)} (${new Date(candle.timestamp).toLocaleTimeString('pt-BR')})`);
                                 }
 
@@ -6042,10 +6042,6 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                     showNotification('❌ Erro ao executar ordem', 'error');
                 }
             };
-
-            // 🔍 DEBUG: Confirmar que a função foi definida
-            console.log('✅ executeSignalFromCard definida:', typeof executeSignalFromCard);
-            window.executeSignalFromCard = executeSignalFromCard; // Disponibilizar globalmente para debug
 
             const formatBRL = (value) => {
                 if (value === null || value === undefined) return 'R$ 0,00';
