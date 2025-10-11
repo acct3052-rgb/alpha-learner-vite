@@ -2466,12 +2466,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             }
 
             connectBinanceWebSocket(symbol, interval = '5m', onUpdate) {
-                console.log(`🔍 [WEBSOCKET] connectBinanceWebSocket chamado!`);
-                console.log(`   📋 Parâmetros: symbol=${symbol}, interval=${interval}`);
-                console.log(`   📞 Callback onUpdate: ${typeof onUpdate}`);
-                
                 if (this.binanceWs) {
-                    console.log('🔌 Fechando conexão WebSocket anterior...');
                     this.binanceWs.close();
                     if (this.pingInterval) {
                         clearInterval(this.pingInterval);
@@ -2491,7 +2486,6 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 this.binanceWs = new WebSocket(wsUrl);
 
                 this.binanceWs.onopen = () => {
-                    console.log('✅ WebSocket Binance conectado!');
                     this.wsReconnectAttempts = 0;
                     this.lastPongTime = Date.now();
                     this.restApiFailover = false;
@@ -2659,8 +2653,6 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 };
 
                 this.binanceWs.onclose = () => {
-                    console.log('🔌 WebSocket Binance desconectado');
-
                     if (this.pingInterval) {
                         clearInterval(this.pingInterval);
                     }
@@ -2668,7 +2660,11 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     // 🔄 RECONEXÃO INFINITA com backoff exponencial
                     this.wsReconnectAttempts++;
                     const delay = Math.min(1000 * Math.pow(2, this.wsReconnectAttempts), 30000); // Máximo 30s
-                    console.log(`🔄 Tentando reconectar em ${delay/1000}s (tentativa ${this.wsReconnectAttempts})...`);
+                    
+                    // Log apenas a cada 10 tentativas para evitar spam
+                    if (this.wsReconnectAttempts % 10 === 1) {
+                        console.log(`🔄 WebSocket reconectando... (tentativa ${this.wsReconnectAttempts})`);
+                    }
 
                     setTimeout(() => {
                         this.connectBinanceWebSocket(symbol, interval, onUpdate);
@@ -7062,16 +7058,12 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                     const totalPnL = dailyLogs.reduce((sum, l) => sum + (l.prices?.finalPnL || 0), 0);
                                     const winRate = (wins.length / dailyLogs.length) * 100;
 
-                                    console.log(`📊 [DASHBOARD] Métricas 24h: ${dailyLogs.length} sinais, ${wins.length} acertos, ${winRate.toFixed(1)}% taxa, P&L: ${totalPnL.toFixed(2)}`);
-
                                     setMetrics({
                                         winRate: winRate || 0,
                                         totalPnL: totalPnL || 0,
                                         totalSignals: dailyLogs.length || 0
                                     });
                                     return;
-                                } else {
-                                    console.log('📊 [DASHBOARD] Nenhum sinal nas últimas 24h encontrado nos logs de auditoria');
                                 }
                             }
                         }
