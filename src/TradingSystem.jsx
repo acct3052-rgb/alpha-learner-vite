@@ -2481,7 +2481,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 
                 // Usar WebSocket de Futures (não Spot)
                 const wsUrl = `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@kline_${interval}`;
-                console.log('🔌 Conectando ao WebSocket Binance Futures:', wsUrl);
+                // Conectando silenciosamente
 
                 this.binanceWs = new WebSocket(wsUrl);
 
@@ -2514,81 +2514,16 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                             if (candle.isClosed) {
                                 console.log('📊 Candle FECHADO recebido:', candle.close, 'às', new Date(candle.timestamp).toLocaleTimeString('pt-BR'));
 
-                                // 🔍 [COMPARAÇÃO] Log detalhado do candle fechado via WebSocket
-                                console.log(`🔍 [WEBSOCKET FECHADO] ===== DADOS PARA COMPARAÇÃO =====`);
-                                console.log(`   📅 Timestamp: ${candle.timestamp} (${new Date(candle.timestamp).toLocaleString('pt-BR')})`);
-                                console.log(`   📊 OHLC WebSocket:`);
-                                console.log(`      🟢 Open:  ${candle.open.toFixed(5)}`);
-                                console.log(`      🔴 High:  ${candle.high.toFixed(5)}`);
-                                console.log(`      🔵 Low:   ${candle.low.toFixed(5)}`);
-                                console.log(`      ⚪ Close: ${candle.close.toFixed(5)}`);
-                                console.log(`   📈 Movimento: ${(candle.close - candle.open).toFixed(5)} pts`);
-                                console.log(`   🎨 Cor: ${candle.close > candle.open ? 'VERDE 🟢' : candle.close < candle.open ? 'VERMELHO 🔴' : 'DOJI ⚪'}`);
-                                console.log(`   ⏰ Período: ${new Date(candle.timestamp).toLocaleTimeString('pt-BR')} - ${new Date(candle.timestamp + 299999).toLocaleTimeString('pt-BR')}`);
-                                console.log(`   🔍 isClosed: ${candle.isClosed} (confirmado como FECHADO)`);
-                                console.log(`   🎯 Fonte: WebSocket Binance (tempo real)`);
+                                // Comparação silenciosa - logs removidos para performance
                                 
-                                // 🚀 TESTE: Comparar imediatamente com REST API
-                                setTimeout(async () => {
-                                    try {
-                                        console.log(`🔍 [COMPARAÇÃO] Buscando mesmo candle via REST API...`);
-                                        
-                                        if (this.fetchSpecificCandleFromREST) {
-                                            const restCandle = await this.fetchSpecificCandleFromREST(
-                                                this.symbol || 'BTCUSDT', // Usar símbolo atual
-                                                '5m',
-                                                candle.timestamp
-                                            );
-                                            
-                                            if (restCandle) {
-                                                console.log(`📊 [REST API] DADOS PARA COMPARAÇÃO:`);
-                                                console.log(`   📅 Timestamp: ${restCandle.timestamp} (${new Date(restCandle.timestamp).toLocaleString('pt-BR')})`);
-                                                console.log(`   📊 OHLC REST API:`);
-                                                console.log(`      🟢 Open:  ${restCandle.open.toFixed(5)}`);
-                                                console.log(`      🔴 High:  ${restCandle.high.toFixed(5)}`);
-                                                console.log(`      🔵 Low:   ${restCandle.low.toFixed(5)}`);
-                                                console.log(`      ⚪ Close: ${restCandle.close.toFixed(5)}`);
-                                                console.log(`   📈 Movimento: ${(restCandle.close - restCandle.open).toFixed(5)} pts`);
-                                                console.log(`   🎨 Cor: ${restCandle.close > restCandle.open ? 'VERDE 🟢' : restCandle.close < restCandle.open ? 'VERMELHO 🔴' : 'DOJI ⚪'}`);
-                                                
-                                                // 🔍 COMPARAÇÃO DETALHADA
-                                                const openDiff = Math.abs(candle.open - restCandle.open);
-                                                const highDiff = Math.abs(candle.high - restCandle.high);
-                                                const lowDiff = Math.abs(candle.low - restCandle.low);
-                                                const closeDiff = Math.abs(candle.close - restCandle.close);
-                                                
-                                                console.log(`⚖️ [DIFERENÇAS] WebSocket vs REST API:`);
-                                                console.log(`   Open:  ${openDiff.toFixed(8)} ${openDiff === 0 ? '✅ IGUAL' : '⚠️ DIFERENTE'}`);
-                                                console.log(`   High:  ${highDiff.toFixed(8)} ${highDiff === 0 ? '✅ IGUAL' : '⚠️ DIFERENTE'}`);
-                                                console.log(`   Low:   ${lowDiff.toFixed(8)} ${lowDiff === 0 ? '✅ IGUAL' : '⚠️ DIFERENTE'}`);
-                                                console.log(`   Close: ${closeDiff.toFixed(8)} ${closeDiff === 0 ? '✅ IGUAL' : '⚠️ DIFERENTE'}`);
-                                                
-                                                const totalDiff = openDiff + highDiff + lowDiff + closeDiff;
-                                                if (totalDiff === 0) {
-                                                    console.log(`🎯 [RESULTADO] DADOS IDÊNTICOS! WebSocket = REST API ✅`);
-                                                } else {
-                                                    console.log(`⚠️ [RESULTADO] DIFERENÇAS ENCONTRADAS! Total: ${totalDiff.toFixed(8)}`);
-                                                }
-                                            } else {
-                                                console.warn(`⚠️ [REST API] Candle não encontrado na REST API ainda`);
-                                            }
-                                        }
-                                    } catch (error) {
-                                        console.error(`❌ [COMPARAÇÃO] Erro ao comparar com REST API:`, error.message);
-                                    }
-                                }, 2000); // Aguardar 2s para REST API processar
+                                // Comparação removida para reduzir logs
 
                                 // 🎯 IMPORTANTE: Salvar candle fechado imediatamente para validação
                                 const existingIndex = this.prices.findIndex(p => p.timestamp === candle.timestamp);
                                 if (existingIndex >= 0) {
                                     const oldCandle = this.prices[existingIndex];
                                     // ✅ VALIDAÇÃO: Verificar se dados mudaram
-                                    if (oldCandle.close !== candle.close || oldCandle.open !== candle.open) {
-                                        console.log(`⚠️ [CACHE CONFLICT] WebSocket atualizou candle existente:`);
-                                        console.log(`   📊 Antigo: O=${oldCandle.open.toFixed(2)} C=${oldCandle.close.toFixed(2)}`);
-                                        console.log(`   📊 Novo:   O=${candle.open.toFixed(2)} C=${candle.close.toFixed(2)}`);
-                                        console.log(`   🔄 Atualizando cache com dados do WebSocket`);
-                                    }
+                                    // Cache atualizado silenciosamente
                                     this.prices[existingIndex] = {
                                         ...candle,
                                         source: 'websocket-fresh',
@@ -2603,7 +2538,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                                     if (this.prices.length > 200) {
                                         this.prices.shift();
                                     }
-                                    console.log(`💾 [WEBSOCKET] Novo candle fechado adicionado ao cache`);
+                                    // Candle adicionado silenciosamente
                                 }
 
                                 // 🔧 CORREÇÃO: Manter currentCandle com dados do candle fechado por alguns segundos
@@ -2631,7 +2566,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 
                                 // Log muito esporádico para não poluir console
                                 if (candleChanged && Math.random() < 0.002) { // 0.2% chance
-                                    console.log(`📊 [WS] Candle em formação: $${candle.close.toFixed(2)} (${new Date(candle.timestamp).toLocaleTimeString('pt-BR')})`);
+                                    // Candle em formação - log removido
                                 }
 
                                 // Callback para UI em tempo real
@@ -2695,12 +2630,12 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     } else if (timeSinceLastPong > 60000) { // 1 minuto - INFO
                         // Log silencioso (apenas de vez em quando)
                         if (Math.random() < 0.3) {
-                            console.log('🔄 WebSocket ativo. Último dado há', Math.floor(timeSinceLastPong/1000), 's');
+                            // WebSocket ativo - log removido
                         }
                     } else {
                         // Tudo OK - log muito esporádico
                         if (Math.random() < 0.1) {
-                            console.log('💓 WebSocket saudável. Último dado há', Math.floor(timeSinceLastPong/1000), 's');
+                            // WebSocket saudável - log removido
                         }
                     }
                 }, 120000); // Check a cada 2 minutos (otimizado)
@@ -2720,7 +2655,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 
             disconnectBinanceWebSocket() {
                 if (this.binanceWs) {
-                    console.log('🔌 Fechando conexão WebSocket...');
+                    // Fechando WebSocket silenciosamente
                     this.wsReconnectAttempts = this.maxReconnectAttempts; // Prevenir reconexão automática
                     this.binanceWs.close();
                     this.binanceWs = null;
@@ -5138,7 +5073,7 @@ useEffect(() => {
             useEffect(() => {
                 // 🔌 GERENCIAR CONEXÃO WEBSOCKET baseado no estado isActive
                 if (!isActive) {
-                    console.log('⏹️ [WEBSOCKET] Alpha Engine desativado - desconectando WebSocket...');
+                    // WebSocket desconectado silenciosamente
                     if (marketDataRef.current) {
                         marketDataRef.current.disconnectBinanceWebSocket();
                     }
@@ -5148,12 +5083,12 @@ useEffect(() => {
                 if (!marketData || !alphaEngine || !apiManager) return;
                 
                 // 🔌 CONECTAR WEBSOCKET quando ativo
-                console.log('🔌 [WEBSOCKET] Alpha Engine ativo - conectando WebSocket...');
+                // WebSocket conectado silenciosamente
                 if (marketDataRef.current) {
                     marketDataRef.current.connectBinanceWebSocket('BTCUSDT', '5m', (candle) => {
                         // ✅ REDUZIDO: Só logar candles fechados (importantes) ou ocasionalmente
                         if (candle.isClosed) {
-                            console.log('📨 [WEBSOCKET] Candle FECHADO recebido');
+                            // Candle fechado processado silenciosamente
                         } else if (Math.random() < 0.01) { // 1% dos candles em formação
                             console.log('📨 [WEBSOCKET] Candle em formação (log reduzido)');
                         }
