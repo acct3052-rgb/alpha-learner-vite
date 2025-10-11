@@ -4777,6 +4777,11 @@ calculateVolumeScore(volume) {
                         return newSignals;
                     });
 
+                    // 🔔 FORÇAR ATUALIZAÇÃO IMEDIATA: Notificar listeners
+                    if (memoryDBRef.current) {
+                        memoryDBRef.current.notifyChange();
+                    }
+
                     showNotification(`Melhor sinal ${signal.direction} - Score: ${signal.score}%`);
                     playAlert();
                     scheduleSignalVerification(signal);
@@ -6027,6 +6032,11 @@ useEffect(() => {
                                         : s
                                 )
                             );
+
+                            // 🔔 FORÇAR ATUALIZAÇÃO IMEDIATA: Notificar listeners
+                            if (memoryDBRef.current) {
+                                memoryDBRef.current.notifyChange();
+                            }
                         } catch (error) {
                             console.error('❌ Erro ao atualizar UI:', error);
                             // ✅ Continua - não afeta resultado calculado
@@ -6225,6 +6235,11 @@ useEffect(() => {
         return s;
     });
 });
+
+                    // 🔔 FORÇAR ATUALIZAÇÃO IMEDIATA: Notificar listeners
+                    if (window.memoryDB) {
+                        window.memoryDB.notifyChange();
+                    }
 
 
                     showNotification(
@@ -7017,8 +7032,8 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
                 updateMetrics();
 
-                // NOVO: Atualizar a cada 5 segundos
-                const interval = setInterval(updateMetrics, 5000);
+                // OTIMIZADO: Atualizar a cada 2 segundos para maior responsividade
+                const interval = setInterval(updateMetrics, 2000);
                 return () => clearInterval(interval);
             }, [alphaEngine, updateTrigger, memoryDB]);
 
