@@ -4900,17 +4900,8 @@ useEffect(() => {
             setMarketData(marketDataRef.current);
             console.log('✅ MarketData inicializado');
             
-            // 🔌 Inicializar WebSocket automaticamente com BTCUSDT
-            console.log('🔌 [WEBSOCKET] Iniciando conexão automática com BTCUSDT...');
-            marketDataRef.current.connectBinanceWebSocket('BTCUSDT', '5m', (candle) => {
-                // ✅ REDUZIDO: Só logar candles fechados (importantes) ou ocasionalmente
-                if (candle.isClosed) {
-                    console.log('📨 [WEBSOCKET] Candle FECHADO recebido');
-                } else if (Math.random() < 0.01) { // 1% dos candles em formação
-                    console.log('📨 [WEBSOCKET] Candle em formação (log reduzido)');
-                }
-            });
-            console.log('✅ WebSocket inicializado automaticamente');
+            // 🔌 WebSocket será conectado apenas quando Alpha Engine estiver ativo
+            console.log('✅ MarketData pronto (WebSocket controlado por isActive)');
             
             // ✅ Inicializar AuditSystem com Supabase
             auditSystemRef.current = new AuditSystem();
@@ -5050,9 +5041,11 @@ useEffect(() => {
 }, []);
             
 
-            // ✅ LIMPEZA DE TIMERS AO DESMONTAR
+            // ✅ LIMPEZA COMPLETA AO DESMONTAR COMPONENTE
             useEffect(() => {
                 return () => {
+                    console.log('🧹 [CLEANUP] Desmontando componente - limpeza completa...');
+                    
                     // Limpar todos os timers de verificação
                     verificationTimers.current.forEach((timerData) => {
                         if (timerData.timer) clearTimeout(timerData.timer);
@@ -5060,7 +5053,19 @@ useEffect(() => {
                         if (timerData.safetyTimeout) clearTimeout(timerData.safetyTimeout);
                     });
                     verificationTimers.current.clear();
-                    console.log('🧹 Timers limpos ao desmontar componente');
+                    
+                    // 🔌 GARANTIR desconexão do WebSocket
+                    if (marketDataRef.current) {
+                        marketDataRef.current.disconnectBinanceWebSocket();
+                    }
+                    
+                    // Limpar interval global se existir
+                    if (window._analysisInterval) {
+                        clearInterval(window._analysisInterval);
+                        window._analysisInterval = null;
+                    }
+                    
+                    console.log('✅ [CLEANUP] Limpeza completa finalizada (timers + WebSocket + intervals)');
                 };
             }, []);
 
@@ -5135,7 +5140,29 @@ useEffect(() => {
             }, [minScore, riskAmount, maxPositions]);
 
             useEffect(() => {
-                if (!isActive || !marketData || !alphaEngine || !apiManager) return;
+                // 🔌 GERENCIAR CONEXÃO WEBSOCKET baseado no estado isActive
+                if (!isActive) {
+                    console.log('⏹️ [WEBSOCKET] Alpha Engine desativado - desconectando WebSocket...');
+                    if (marketDataRef.current) {
+                        marketDataRef.current.disconnectBinanceWebSocket();
+                    }
+                    return;
+                }
+                
+                if (!marketData || !alphaEngine || !apiManager) return;
+                
+                // 🔌 CONECTAR WEBSOCKET quando ativo
+                console.log('🔌 [WEBSOCKET] Alpha Engine ativo - conectando WebSocket...');
+                if (marketDataRef.current) {
+                    marketDataRef.current.connectBinanceWebSocket('BTCUSDT', '5m', (candle) => {
+                        // ✅ REDUZIDO: Só logar candles fechados (importantes) ou ocasionalmente
+                        if (candle.isClosed) {
+                            console.log('📨 [WEBSOCKET] Candle FECHADO recebido');
+                        } else if (Math.random() < 0.01) { // 1% dos candles em formação
+                            console.log('📨 [WEBSOCKET] Candle em formação (log reduzido)');
+                        }
+                    });
+                }
 
                 let lastKnownPrice = null;
                 let samePriceCount = 0;
@@ -5387,12 +5414,19 @@ useEffect(() => {
                 window._analysisInterval = interval;
 
                 return () => {
-                    // Limpar interval
+                    // Limpar interval de análise
                     if (window._analysisInterval) {
                         clearInterval(window._analysisInterval);
                         window._analysisInterval = null;
                     }
-                    console.log('⏹️ Sistema de análise contínua parado');
+                    
+                    // 🔌 DESCONECTAR WEBSOCKET no cleanup
+                    console.log('🔌 [CLEANUP] Desconectando WebSocket...');
+                    if (marketDataRef.current) {
+                        marketDataRef.current.disconnectBinanceWebSocket();
+                    }
+                    
+                    console.log('⏹️ Sistema completamente parado (análise + WebSocket)');
                 };
             }, [isActive, marketData, alphaEngine, apiManager, dataSource, orderExecutor]); // Fixed: removed minScore, mode, riskAmount (using refs)
 
@@ -6953,7 +6987,13 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                     </div>
                     <div className="status-indicator">
                         <div className={`toggle-switch ${isActive ? 'active' : ''}`} 
-                             onClick={() => setIsActive(!isActive)}>
+                             onClick={() => {
+                                 const newState = !isActive;
+                                 console.log(`🔄 [ALPHA ENGINE] ${newState ? 'ATIVANDO' : 'DESATIVANDO'} sistema...`);
+                                 console.log(`   🔌 WebSocket será ${newState ? 'conectado' : 'desconectado'}`);
+                                 console.log(`   📊 Análise será ${newState ? 'iniciada' : 'parada'}`);
+                                 setIsActive(newState);
+                             }}>
                         </div>
                         <span>Alpha Engine: {isActive ? 'ATIVO' : 'INATIVO'}</span>
                         <div className="status-dot"></div>
