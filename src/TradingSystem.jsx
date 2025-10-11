@@ -1650,7 +1650,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
         }
 
         if (window.debugAudit) {
-            console.log('💾 [AUDIT] Dados salvos no Supabase');
+            // Dados de auditoria salvos silenciosamente
         }
         
         this.notifyChange();
@@ -1660,13 +1660,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 }
 
             logSignalGeneration(signal, currentPrice, indicators) {
-                if (window.debugAudit) {
-                    console.log('🔍 [AUDIT] logSignalGeneration chamado:', {
-                        signalId: signal.id,
-                        price: signal.price,
-                        currentPrice: currentPrice.close
-                    });
-                }
+                // Debug de auditoria removido para performance
 
                 const candleCloseTime = new Date(signal.timestamp);
                 candleCloseTime.setSeconds(0, 0);
@@ -1712,7 +1706,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 this.saveToStorage();
                 
                 if (window.debugAudit) {
-                    console.log('✅ [AUDIT] Log salvo. Total de logs:', this.auditLogs.length);
+                    // Log salvo silenciosamente
                 }
                 
                 return log;
@@ -1741,14 +1735,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             }
 
             updateSignalOutcome(signalId, outcome, finalPrice, pnl, executionDetails = null) {
-                if (window.debugAudit) {
-                    console.log('🔍 [AUDIT] updateSignalOutcome chamado:', {
-                        signalId,
-                        outcome,
-                        finalPrice,
-                        pnl
-                    });
-                }
+                // Debug de auditoria removido para performance
 
                 const log = this.auditLogs.find(l => l.signalId === signalId);
                 
@@ -1770,7 +1757,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     this.saveToStorage();
                     
                     if (window.debugAudit) {
-                        console.log('✅ [AUDIT] Outcome atualizado com sucesso');
+                        // Outcome atualizado silenciosamente
                     }
                 } else {
                     if (window.debugAudit) {
@@ -2194,7 +2181,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                         savedAt: new Date().toISOString()
                     });
 
-                    console.log('💾 Sinal salvo no Supabase:', signal.id);
+                    // Sinal salvo silenciosamente
                     this.notifyChange();
 
                 } catch (error) {
@@ -2310,7 +2297,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     }));
 
                     this.prices = candles;
-                    console.log('✅ Dados carregados via REST API:', candles.length, 'candles');
+                    // Dados carregados silenciosamente
                     return candles;
                 } catch (error) {
                     console.error('❌ Erro ao buscar dados REST:', error);
@@ -2596,8 +2583,8 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     this.wsReconnectAttempts++;
                     const delay = Math.min(1000 * Math.pow(2, this.wsReconnectAttempts), 30000); // Máximo 30s
                     
-                    // Log apenas a cada 10 tentativas para evitar spam
-                    if (this.wsReconnectAttempts % 10 === 1) {
+                    // Log apenas a cada 20 tentativas para evitar spam
+                    if (this.wsReconnectAttempts % 20 === 1) {
                         console.log(`🔄 WebSocket reconectando... (tentativa ${this.wsReconnectAttempts})`);
                     }
 
@@ -5090,7 +5077,7 @@ useEffect(() => {
                         if (candle.isClosed) {
                             // Candle fechado processado silenciosamente
                         } else if (Math.random() < 0.01) { // 1% dos candles em formação
-                            console.log('📨 [WEBSOCKET] Candle em formação (log reduzido)');
+                            // Candle em formação processado silenciosamente
                         }
                     });
                 }
