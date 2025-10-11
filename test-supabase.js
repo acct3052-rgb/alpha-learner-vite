@@ -1,7 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
+import dotenv from 'dotenv'
 
-const supabaseUrl = 'https://eamgmklplhbbdzflsxji.supabase.co'
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhbWdta2xwbGhiYmR6ZmxzeGppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0NjI4NzQsImV4cCI6MjA3NTAzODg3NH0.nfcYiq8MQMPJOB8RaXhMofSeE_xZMM2mbpV7NFWK5ms'
+// Carregar variáveis de ambiente
+dotenv.config()
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://kxcsmkwnxdeiaifbnecx.supabase.co'
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4Y3Nta3dueGRlaWFpZmJuZWN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMzU5NTAsImV4cCI6MjA3NTYxMTk1MH0.rxTmiqvcJ0bxuqn1iWnM8PNDoG_tDmu62KGxoz0KuuI'
+
+console.log('📍 URL Supabase:', supabaseUrl)
+console.log('🔑 Key definida:', supabaseKey ? 'SIM' : 'NÃO')
 
 const supabase = createClient(supabaseUrl, supabaseKey)
 
