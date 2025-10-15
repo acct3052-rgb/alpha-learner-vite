@@ -6956,72 +6956,51 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
            
             
 
-            // NOVO: Atualizar métricas usando auditSystem com filtro de 24h
+            // Dashboard: Buscar dados diretamente do Supabase (sem cache)
             useEffect(() => {
                 let isMounted = true;
                 
                 const updateMetrics = async () => {
-                    if (!isMounted) return;
+                    if (!isMounted || !window.supabase) return;
                     
                     try {
-                        // Usar auditSystem para dados consistentes (mesma fonte das Métricas Avançadas)
-                        if (window.auditSystemRef) {
-                            const logs = await window.auditSystemRef.getRecentLogs(200, true); // forceReload = true
-                            
-                            if (!isMounted) return; // Check após operação assíncrona
-                            
-                            if (Array.isArray(logs) && logs.length > 0) {
-                                // Filtrar apenas últimas 24 horas
-                                const cutoffDate = new Date();
-                                cutoffDate.setHours(cutoffDate.getHours() - 24);
-                                
-                                const dailyLogs = logs.filter(l => 
-                                    l.outcome && 
-                                    l.outcome !== 'PENDENTE' && 
-                                    new Date(l.generatedAt) >= cutoffDate
-                                );
+                        // Buscar dados diretamente da tabela audit_logs (últimas 24h)
+                        const cutoffDate = new Date();
+                        cutoffDate.setHours(cutoffDate.getHours() - 24);
+                        
+                        const { data: logs, error } = await window.supabase
+                            .from('audit_logs')
+                            .select('*')
+                            .gte('generated_at', cutoffDate.toISOString())
+                            .not('outcome', 'is', null)
+                            .neq('outcome', 'PENDENTE')
+                            .order('generated_at', { ascending: false });
 
-                                if (dailyLogs.length > 0) {
-                                    const wins = dailyLogs.filter(l => l.outcome === 'ACERTO');
-                                    const totalPnL = dailyLogs.reduce((sum, l) => sum + (l.prices?.finalPnL || 0), 0);
-                                    const winRate = (wins.length / dailyLogs.length) * 100;
+                        if (!isMounted) return;
 
-                                    if (isMounted) {
-                                        setMetrics({
-                                            winRate: winRate || 0,
-                                            totalPnL: totalPnL || 0,
-                                            totalSignals: dailyLogs.length || 0
-                                        });
-                                    }
-                                    return;
-                                }
-                            }
+                        if (error) {
+                            console.error('Erro ao buscar logs de auditoria:', error);
+                            setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
+                            return;
                         }
 
-                        // Fallback 1: usar memoryDB se auditSystem não disponível
-                        if (memoryDB && isMounted) {
-                            const dbStats = await memoryDB.getStatistics();
-                            if (!isMounted) return;
-                            
-                            if (dbStats && dbStats.total > 0) {
-                                setMetrics({
-                                    winRate: dbStats.winRate || 0,
-                                    totalPnL: dbStats.totalPnL || 0,
-                                    totalSignals: dbStats.total || 0
-                                });
-                                return;
-                            }
-                        }
+                        if (logs && logs.length > 0) {
+                            const wins = logs.filter(l => l.outcome === 'ACERTO');
+                            const totalPnL = logs.reduce((sum, l) => {
+                                const pnl = l.prices?.finalPnL || 0;
+                                return sum + (typeof pnl === 'number' ? pnl : 0);
+                            }, 0);
+                            const winRate = (wins.length / logs.length) * 100;
 
-                        // Fallback 2: usar alphaEngine.performance se outros não disponíveis
-                        if (isMounted) {
-                            if (alphaEngine && alphaEngine.performance) {
+                            if (isMounted) {
                                 setMetrics({
-                                    winRate: alphaEngine.performance.winRate || 0,
-                                    totalPnL: alphaEngine.performance.totalPnL || 0,
-                                    totalSignals: alphaEngine.performance.totalSignals || 0
+                                    winRate: winRate || 0,
+                                    totalPnL: totalPnL || 0,
+                                    totalSignals: logs.length || 0
                                 });
-                            } else {
+                            }
+                        } else {
+                            if (isMounted) {
                                 setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
                             }
                         }
@@ -7035,14 +7014,14 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
                 updateMetrics();
 
-                // OTIMIZADO: Atualizar a cada 5 segundos (reduzido para evitar travamentos)
-                const interval = setInterval(updateMetrics, 5000);
+                // Atualizar a cada 10 segundos
+                const interval = setInterval(updateMetrics, 10000);
                 
                 return () => {
                     isMounted = false;
                     clearInterval(interval);
                 };
-            }, []); // Removidas dependências instáveis para evitar loops
+            }, []); // Sem dependências - dados sempre do banco
 
             return (
                 <div>
@@ -8691,37 +8670,49 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
                 let isMounted = true;
                 
                 const calculateMetrics = async () => {
-                    if (!isMounted) return;
-                    if (!window.auditSystemRef) return;
+                    if (!isMounted || !window.supabase) return;
 
                     try {
-                        const logs = await window.auditSystemRef.getRecentLogs(200);
+                        // Calcular data de corte baseada no timeRange
+                        const cutoffDate = new Date();
+                        if (timeRange === '24h') cutoffDate.setHours(cutoffDate.getHours() - 24);
+                        else if (timeRange === '7d') cutoffDate.setDate(cutoffDate.getDate() - 7);
+                        else if (timeRange === '30d') cutoffDate.setDate(cutoffDate.getDate() - 30);
+                        else cutoffDate.setDate(cutoffDate.getDate() - 7); // default 7d
+
+                        // Buscar dados diretamente da tabela audit_logs (sem cache)
+                        const { data: logs, error } = await window.supabase
+                            .from('audit_logs')
+                            .select('*')
+                            .gte('generated_at', cutoffDate.toISOString())
+                            .not('outcome', 'is', null)
+                            .neq('outcome', 'PENDENTE')
+                            .order('generated_at', { ascending: false })
+                            .limit(500); // Limite para performance
+
                         if (!isMounted) return;
-                        
-                        if (!Array.isArray(logs)) {
-                            console.warn('⚠️ getRecentLogs não retornou array em AdvancedMetrics:', logs);
-                            return;
-                        }
-                        const completedLogs = logs.filter(l => l.outcome && l.outcome !== 'PENDENTE');
-                        
-                        if (completedLogs.length === 0) {
+
+                        if (error) {
+                            console.error('Erro ao buscar logs para métricas avançadas:', error);
                             if (isMounted) setMetrics(null);
                             return;
                         }
 
-                    const cutoffDate = new Date();
-                    if (timeRange === '24h') cutoffDate.setHours(cutoffDate.getHours() - 24);
-                    else if (timeRange === '7d') cutoffDate.setDate(cutoffDate.getDate() - 7);
-                    else if (timeRange === '30d') cutoffDate.setDate(cutoffDate.getDate() - 30);
-                    
-                    const filteredLogs = completedLogs.filter(l => 
-                        new Date(l.generatedAt) >= cutoffDate
-                    );
+                        if (!logs || logs.length === 0) {
+                            if (isMounted) setMetrics(null);
+                            return;
+                        }
 
-                    if (filteredLogs.length === 0) {
-                        setMetrics(null);
-                        return;
-                    }
+                        // Converter dados do Supabase para formato esperado
+                        const filteredLogs = logs.map(log => ({
+                            signalId: log.signal_id,
+                            generatedAt: log.generated_at,
+                            outcome: log.outcome,
+                            outcomeTime: log.outcome_time,
+                            prices: log.prices || {},
+                            scoreRange: log.score_range,
+                            hourOfDay: log.hour_of_day
+                        }));
 
                     const wins = filteredLogs.filter(l => l.outcome === 'ACERTO');
                     const losses = filteredLogs.filter(l => l.outcome === 'ERRO');
@@ -8868,14 +8859,14 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
 
                 calculateMetrics();
                 
-                // Intervalo mais longo para evitar sobrecarga
-                const interval = setInterval(calculateMetrics, 15000);
+                // Intervalo para atualização automática
+                const interval = setInterval(calculateMetrics, 20000);
                 
                 return () => {
                     isMounted = false;
                     clearInterval(interval);
                 };
-            }, [timeRange]); // Apenas timeRange como dependência
+            }, [timeRange]); // Re-executa quando timeRange muda
 
             if (!metrics) {
                 return (
