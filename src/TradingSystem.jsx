@@ -2679,7 +2679,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                                 // ✅ AÇÃO CORRETIVA: Forçar refresh via REST API
                                 if (this.stuckPriceCount >= 5) {
                                     console.error(`🔄 AÇÃO CORRETIVA: Forçando busca via REST API...`);
-                                    this.fetchKlinesFromREST(this.symbol || 'BTCUSDT', '5m', 10);
+                                    this.fetchKlinesFromREST(this.symbol, '5m', 10);
                                     this.stuckPriceCount = 0; // Reset após ação corretiva
                                 }
                             }
@@ -2721,7 +2721,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                             
                             // Ação corretiva para dados históricos
                             if (this.fetchKlinesFromREST) {
-                                this.fetchKlinesFromREST(this.symbol || 'BTCUSDT', '5m', 20);
+                                this.fetchKlinesFromREST(this.symbol, '5m', 20);
                                 this.stuckPriceCount = 0;
                             }
                         }
@@ -4635,7 +4635,7 @@ calculateVolumeScore(volume) {
             const [maxPositions, setMaxPositions] = useState(3);
             const [updateTrigger, setUpdateTrigger] = useState(0); // NOVO: Para forçar re-renders
             const [assetType, setAssetType] = useState('crypto'); // 'crypto', 'forex', 'stock'
-            const [symbol, setSymbol] = useState('BTCUSDT');
+            const [symbol, setSymbol] = useState('EURUSDT');
 
             const marketDataRef = useRef(null);
             const alphaEngineRef = useRef(null);
@@ -5072,7 +5072,7 @@ useEffect(() => {
                 // 🔌 CONECTAR WEBSOCKET quando ativo
                 // WebSocket conectado silenciosamente
                 if (marketDataRef.current) {
-                    marketDataRef.current.connectBinanceWebSocket('BTCUSDT', '5m', (candle) => {
+                    marketDataRef.current.connectBinanceWebSocket(symbol || 'BTCUSDT', '5m', (candle) => {
                         // ✅ REDUZIDO: Só logar candles fechados (importantes) ou ocasionalmente
                         if (candle.isClosed) {
                             // Candle fechado processado silenciosamente
@@ -5346,7 +5346,7 @@ useEffect(() => {
                     
                     console.log('⏹️ Sistema completamente parado (análise + WebSocket)');
                 };
-            }, [isActive, marketData, alphaEngine, apiManager, dataSource, orderExecutor]); // Fixed: removed minScore, mode, riskAmount (using refs)
+            }, [isActive, marketData, alphaEngine, apiManager, dataSource, orderExecutor, symbol]); // Fixed: added symbol to reconnect WebSocket when symbol changes
 
             // Optimized: Use a separate state for countdown timestamp instead of forcing re-render of all signals
             const [currentTime, setCurrentTime] = useState(Date.now());
