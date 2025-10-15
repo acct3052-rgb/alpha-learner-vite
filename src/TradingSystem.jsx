@@ -874,13 +874,19 @@ const { useState, useEffect, useRef } = React
                 const takeProfit = signal.takeProfit;
                 const quantity = this.calculatePositionSize(signal, riskAmount);
 
+                const isForex = this.currentSymbol.includes('USD') && 
+                               !this.currentSymbol.includes('BTC') && 
+                               !this.currentSymbol.includes('ETH') && 
+                               !this.currentSymbol.includes('BNB');
+                const precision = isForex ? 5 : 2;
+
                 return {
                     symbol: signal.symbol,
                     direction: signal.direction,
-                    price: price.toFixed(2),
+                    price: price.toFixed(precision),
                     quantity: quantity.toFixed(6),
-                    stopLoss: stopLoss.toFixed(2),
-                    takeProfit: takeProfit.toFixed(2),
+                    stopLoss: stopLoss.toFixed(precision),
+                    takeProfit: takeProfit.toFixed(precision),
                     stopLossPercent: ((Math.abs(price - stopLoss) / price) * 100).toFixed(2),
                     takeProfitPercent: ((Math.abs(takeProfit - price) / price) * 100).toFixed(2),
                     riskAmount: riskAmount.toFixed(2),
@@ -1310,13 +1316,19 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     const commission = exec.orderResult.commission || 0;
                     const netProfit = pnl - commission;
 
+                    const isForex = exec.symbol.includes('USD') && 
+                                   !exec.symbol.includes('BTC') && 
+                                   !exec.symbol.includes('ETH') && 
+                                   !exec.symbol.includes('BNB');
+                    const precision = isForex ? 5 : 2;
+
                     return [
                         exec.timestamp,
                         exec.symbol,
                         exec.direction,
-                        exec.orderResult.executedPrice,
-                        exec.signal.stopLoss,
-                        exec.signal.takeProfit,
+                        parseFloat(exec.orderResult.executedPrice).toFixed(precision),
+                        parseFloat(exec.signal.stopLoss).toFixed(precision),
+                        parseFloat(exec.signal.takeProfit).toFixed(precision),
                         exec.result || 'PENDING',
                         pnl.toFixed(2),
                         commission.toFixed(2),
@@ -2338,7 +2350,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                         // Log detalhado para debug do candle exato
                         if (candle.timestamp === timestamp) {
                             console.log(`🔍 [API BINANCE] Candle buscado: ${new Date(timestamp).toLocaleString('pt-BR')}`);
-                            console.log(`   📊 OHLC: O=${candle.open.toFixed(2)} H=${candle.high.toFixed(2)} L=${candle.low.toFixed(2)} C=${candle.close.toFixed(2)}`);
+                            console.log(`   📊 OHLC: O=${candle.open.toFixed(5)} H=${candle.high.toFixed(5)} L=${candle.low.toFixed(5)} C=${candle.close.toFixed(5)}`);
                             console.log(`   🎨 Cor API: ${candle.close > candle.open ? 'VERDE 🟢' : candle.close < candle.open ? 'VERMELHO 🔴' : 'DOJI ⚪'}`);
                             
                             // ✅ VALIDAÇÃO CRÍTICA: Verificar se candle está fechado
@@ -2354,7 +2366,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 
                             // ⚠️ VALIDAÇÃO ADICIONAL: Detectar candles suspeitos (todos valores iguais)
                             if (candle.open === candle.high && candle.high === candle.low && candle.low === candle.close) {
-                                console.warn(`   ⚠️⚠️⚠️ CANDLE SUSPEITO! Todos valores iguais (OHLC = ${candle.open.toFixed(2)})`);
+                                console.warn(`   ⚠️⚠️⚠️ CANDLE SUSPEITO! Todos valores iguais (OHLC = ${candle.open.toFixed(5)})`);
                                 console.warn(`   ⚠️⚠️⚠️ Isso pode indicar dados incompletos da API!`);
                                 console.warn(`   ⚠️⚠️⚠️ Confira MANUALMENTE no gráfico da Binance Futures!`);
                             } else {
@@ -2414,7 +2426,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 // 2. 🎯 PRIORIDADE: Último candle fechado pelo WebSocket (mais preciso)
                 if (this.lastClosedCandle && this.lastClosedCandle.timestamp === timestamp) {
                     console.log(`✅ Candle encontrado (último fechado WS): ${new Date(timestamp).toLocaleTimeString('pt-BR')}`);
-                    console.log(`   📊 OHLC: O=${this.lastClosedCandle.open.toFixed(2)} H=${this.lastClosedCandle.high.toFixed(2)} L=${this.lastClosedCandle.low.toFixed(2)} C=${this.lastClosedCandle.close.toFixed(2)}`);
+                    console.log(`   📊 OHLC: O=${this.lastClosedCandle.open.toFixed(5)} H=${this.lastClosedCandle.high.toFixed(5)} L=${this.lastClosedCandle.low.toFixed(5)} C=${this.lastClosedCandle.close.toFixed(5)}`);
                     return this.lastClosedCandle;
                 }
 
@@ -5554,7 +5566,7 @@ useEffect(() => {
                                     console.log(`✅ [CACHE HIT] Candle encontrado no cache local!`);
                                     console.log(`� DADOS DO CACHE:`);
                                     console.log(`   ⏰ Timestamp: ${new Date(cachedCandle.timestamp).toLocaleTimeString('pt-BR')}`);
-                                    console.log(`   📊 OHLC: O=${cachedCandle.open.toFixed(2)} H=${cachedCandle.high.toFixed(2)} L=${cachedCandle.low.toFixed(2)} C=${cachedCandle.close.toFixed(2)}`);
+                                    console.log(`   📊 OHLC: O=${cachedCandle.open.toFixed(5)} H=${cachedCandle.high.toFixed(5)} L=${cachedCandle.low.toFixed(5)} C=${cachedCandle.close.toFixed(5)}`);
                                     console.log(`   🎯 Fonte: Cache Local (busca proativa anterior)`);
                                     console.log(`   ⚡ Performance: Cache hit evitou chamada REST API!`);
                                     
@@ -5600,7 +5612,7 @@ useEffect(() => {
                                                 console.log(`✅ [PROATIVA] Candle encontrado - DADOS EXATOS!`);
                                                 console.log(`📊 DADOS OFICIAIS BINANCE:`);
                                                 console.log(`   ⏰ Timestamp: ${new Date(candle.timestamp).toLocaleTimeString('pt-BR')}`);
-                                                console.log(`   📊 OHLC: O=${candle.open.toFixed(2)} H=${candle.high.toFixed(2)} L=${candle.low.toFixed(2)} C=${candle.close.toFixed(2)}`);
+                                                console.log(`   📊 OHLC: O=${candle.open.toFixed(5)} H=${candle.high.toFixed(5)} L=${candle.low.toFixed(5)} C=${candle.close.toFixed(5)}`);
                                                 console.log(`   🎯 Este é o candle CORRETO para verificação!`);
                                             }
                                         } catch (apiError) {
@@ -5619,7 +5631,7 @@ useEffect(() => {
                                         console.log(`✅ [SUCESSO] Candle anterior encontrado na tentativa ${attempt}!`);
                                         console.log(`🎯 [FONTE] REST API Binance (dados oficiais)`);
                                         console.log(`⏰ [PERÍODO] ${new Date(candle.timestamp).toLocaleString('pt-BR')} até ${new Date(candle.timestamp + 299999).toLocaleTimeString('pt-BR')}`);
-                                        console.log(`📊 [OHLC] O=${candle.open.toFixed(2)} H=${candle.high.toFixed(2)} L=${candle.low.toFixed(2)} C=${candle.close.toFixed(2)}`);
+                                        console.log(`📊 [OHLC] O=${candle.open.toFixed(5)} H=${candle.high.toFixed(5)} L=${candle.low.toFixed(5)} C=${candle.close.toFixed(5)}`);
                                         
                                         // 💾 ATUALIZAR CACHE: Sobrescrever dados antigos com dados frescos
                                         if (marketDataRef.current?.prices) {
@@ -5631,8 +5643,8 @@ useEffect(() => {
                                                 // ✅ SOBRESCREVER candle existente com dados frescos
                                                 const oldCandle = marketDataRef.current.prices[existingIndex];
                                                 console.log(`🔄 [CACHE UPDATE] Sobrescrevendo candle existente:`);
-                                                console.log(`   📊 Antigo: O=${oldCandle.open.toFixed(2)} C=${oldCandle.close.toFixed(2)}`);
-                                                console.log(`   📊 Novo:   O=${candle.open.toFixed(2)} C=${candle.close.toFixed(2)}`);
+                                                console.log(`   📊 Antigo: O=${oldCandle.open.toFixed(5)} C=${oldCandle.close.toFixed(5)}`);
+                                                console.log(`   📊 Novo:   O=${candle.open.toFixed(5)} C=${candle.close.toFixed(5)}`);
                                                 
                                                 marketDataRef.current.prices[existingIndex] = {
                                                     ...candle,
@@ -5665,7 +5677,7 @@ useEffect(() => {
                                         // Validar se é realmente o candle anterior
                                         if (candle.timestamp === previousCandleTimestamp) {
                                             console.log(`✅ [VALIDAÇÃO] Candle anterior correto`);
-                                            console.log(`💡 [USO] Entrada=${candle.open.toFixed(2)} | Saída=${candle.close.toFixed(2)}`);
+                                            console.log(`💡 [USO] Entrada=${candle.open.toFixed(5)} | Saída=${candle.close.toFixed(5)}`);
                                         } else {
                                             console.warn(`⚠️ [VALIDAÇÃO] Timestamp não confere`);
                                             console.warn(`   Esperado: ${new Date(previousCandleTimestamp).toLocaleTimeString('pt-BR')}`);
@@ -5736,7 +5748,7 @@ useEffect(() => {
                         console.log(`✅ [BINARY] Candle obtido - USANDO COMO FONTE PRINCIPAL`);
                         console.log(`   🎯 Fonte: ${expirationCandle.source || 'REST API'} (${expirationCandle.updatedAt ? 'DADOS FRESCOS' : 'dados padrão'})`);
                         console.log(`   ⏰ Timestamp: ${new Date(expirationCandle.timestamp).toLocaleString('pt-BR')}`);
-                        console.log(`   📊 OHLC Final: O=${expirationCandle.open.toFixed(2)} H=${expirationCandle.high.toFixed(2)} L=${expirationCandle.low.toFixed(2)} C=${expirationCandle.close.toFixed(2)}`);
+                        console.log(`   📊 OHLC Final: O=${expirationCandle.open.toFixed(5)} H=${expirationCandle.high.toFixed(5)} L=${expirationCandle.low.toFixed(5)} C=${expirationCandle.close.toFixed(5)}`);
                         console.log(`   🔍 [VERIFICATION] Estes são os dados que serão usados para calcular o resultado`);
                         console.log(`   ✅ [ASSURANCE] Cache foi IGNORADO - apenas dados frescos da REST API`);
                         
@@ -5753,7 +5765,21 @@ useEffect(() => {
                         // 🔗 VALIDAÇÃO PRIMÁRIA: ENCADEAMENTO (se disponível)
                         // Quando há encadeamento, usar entrada→saída como primeira conferência
                         // Senão, usar Open→Close do candle
-                        const minVariation = 0.0001;
+                        
+                        // 🎯 PRECISÃO DINÂMICA baseada no símbolo
+                        let minVariation;
+                        if (position.signal.symbol.includes('JPY')) {
+                            // Pares com JPY: 1 pip = 0.01
+                            minVariation = 0.01;
+                        } else if (position.signal.symbol.includes('USD') && 
+                                   !position.signal.symbol.includes('BTC') && 
+                                   !position.signal.symbol.includes('ETH')) {
+                            // Forex principais: 1 pip = 0.0001
+                            minVariation = 0.0001;
+                        } else {
+                            // Crypto: variação mínima maior
+                            minVariation = 0.01;
+                        }
 
                         // 🎯 Usar candle FECHADO (100% preciso)
                         const expirationClose = expirationCandle.close;
@@ -6376,10 +6402,19 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                     currency = 'JPY';
                     locale = 'ja-JP';
                 } else {
-                    // Para pares como EURUSDT, BTCUSDT - mostrar como valor decimal
+                    // Para pares forex/crypto - mostrar com casas adequadas
+                    let decimals = 6; // Padrão para crypto
+                    
+                    // Forex precisa de mais precisão (4-5 casas)
+                    if (symbol?.includes('USD') || symbol?.includes('EUR') || 
+                        symbol?.includes('GBP') || symbol?.includes('JPY') ||
+                        symbol?.includes('AUD') || symbol?.includes('CAD')) {
+                        decimals = 5; // Para pares forex
+                    }
+                    
                     return value.toLocaleString('en-US', { 
-                        minimumFractionDigits: 2, 
-                        maximumFractionDigits: 6 
+                        minimumFractionDigits: decimals, 
+                        maximumFractionDigits: decimals 
                     });
                 }
                 
