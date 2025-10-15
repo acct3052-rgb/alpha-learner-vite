@@ -3358,7 +3358,7 @@ class TPSLOptimizer {
                 }
             }
 
-          analyzeMarket(marketData, dataSource, symbol = 'BTCUSDT') {
+          analyzeMarket(marketData, dataSource, symbol) {
     const prices = marketData.prices;
     const currentPrice = marketData.getLatestPrice();
 
@@ -3572,7 +3572,7 @@ calculateVolumeScore(volume) {
                 return Math.max(-1, Math.min(1, score));
             }
            
-            generateSignal(features, currentPrice, dataSource, symbol = 'BTCUSDT') {
+            generateSignal(features, currentPrice, dataSource, symbol) {
     // Validar entrada
     if (!currentPrice || !currentPrice.close || isNaN(currentPrice.close)) {
         console.error('❌ currentPrice inválido:', currentPrice);
@@ -4194,9 +4194,9 @@ calculateVolumeScore(volume) {
                 message += `<b>Ativo:</b> ${signal.symbol}\n`;
                 message += `<b>Direção:</b> ${signal.direction}\n`;
                 message += `<b>Score:</b> ${signal.score}%\n`;
-                message += `<b>Preço:</b> R$ ${signal.price.toFixed(6)}\n`;
-                message += `<b>Stop Loss:</b> R$ ${signal.stopLoss.toFixed(6)}\n`;
-                message += `<b>Take Profit:</b> R$ ${signal.takeProfit.toFixed(6)}\n`;
+                message += `<b>Preço:</b> ${signal.price.toFixed(6)}\n`;
+                message += `<b>Stop Loss:</b> ${signal.stopLoss.toFixed(6)}\n`;
+                message += `<b>Take Profit:</b> ${signal.takeProfit.toFixed(6)}\n`;
                 message += `<b>Timeframe:</b> ${signal.timeframe}\n`;
                 message += `<b>Fonte:</b> ${dataSource}\n`;
                 
@@ -4214,7 +4214,7 @@ calculateVolumeScore(volume) {
                 let message = `🤖 <b>ORDEM EXECUTADA</b>\n\n`;
                 message += `<b>Direção:</b> ${signal.direction}\n`;
                 message += `<b>Símbolo:</b> ${signal.symbol}\n`;
-                message += `<b>Preço Executado:</b> R$ ${executionResult.executedPrice.toFixed(6)}\n`;
+                message += `<b>Preço Executado:</b> ${executionResult.executedPrice.toFixed(6)}\n`;
                 message += `<b>Quantidade:</b> ${executionResult.executedQty}\n`;
                 message += `<b>Order ID:</b> ${executionResult.orderId}\n`;
                 
@@ -4243,10 +4243,10 @@ calculateVolumeScore(volume) {
                 let message = `${emoji} <b>${title}</b>\n\n`;
                 message += `<b>Símbolo:</b> ${signal.symbol}\n`;
                 message += `<b>Direção:</b> ${signal.direction}\n`;
-                message += `<b>P&L:</b> R$ ${pnl.toFixed(2)}\n`;
+                message += `<b>P&L:</b> ${pnl.toFixed(2)}\n`;
                 
                 if (signal.finalPrice) {
-                    message += `<b>Preço Final:</b> R$ ${signal.finalPrice.toFixed(6)}\n`;
+                    message += `<b>Preço Final:</b> ${signal.finalPrice.toFixed(6)}\n`;
                 }
                 
                 return message;
@@ -4351,7 +4351,7 @@ calculateVolumeScore(volume) {
                 this.results = [];
                 
                 const {
-                    symbol = 'BTCUSDT',
+                    symbol = 'EURUSDT',
                     timeframe = 'M5',
                     startDate,
                     endDate,
@@ -4436,7 +4436,7 @@ calculateVolumeScore(volume) {
                         
                         if (openPositions.length === 0) {
                             try {
-                                const signal = this.alphaEngine.analyzeMarket(mockMarketData, 'BACKTEST');
+                                const signal = this.alphaEngine.analyzeMarket(mockMarketData, 'BACKTEST', symbol);
                                 
                                 if (signal && signal.score >= minScore && balance >= riskPerTrade) {
                                     openPositions.push({
@@ -5072,7 +5072,7 @@ useEffect(() => {
                 // 🔌 CONECTAR WEBSOCKET quando ativo
                 // WebSocket conectado silenciosamente
                 if (marketDataRef.current) {
-                    marketDataRef.current.connectBinanceWebSocket(symbol || 'BTCUSDT', '5m', (candle) => {
+                    marketDataRef.current.connectBinanceWebSocket(symbol, '5m', (candle) => {
                         // ✅ REDUZIDO: Só logar candles fechados (importantes) ou ocasionalmente
                         if (candle.isClosed) {
                             // Candle fechado processado silenciosamente
@@ -5145,7 +5145,7 @@ useEffect(() => {
 
                         // Buscar dados reais da API
                         try {
-                            let symbolToFetch = symbol || 'BTCUSDT';
+                            let symbolToFetch = symbol;
 
                             console.log(`   📡 Buscando dados: ${symbolToFetch} (M5)`);
 
@@ -6303,9 +6303,9 @@ useEffect(() => {
                     const details = `
 Sinal: ${signal.direction || 'N/A'} ${signal.symbol || 'N/A'}
 Score: ${signal.score || 0}%
-Preço: ${formatBRL(signal.price)}
-Stop: ${formatBRL(signal.stopLoss)}
-Alvo: ${formatBRL(signal.takeProfit)}
+Preço: ${formatCurrency(signal.price, signal.symbol)}
+Stop: ${formatCurrency(signal.stopLoss, signal.symbol)}
+Alvo: ${formatCurrency(signal.takeProfit, signal.symbol)}
 TF: ${signal.timeframe || 'N/A'}
 Status: ${signal.status || 'PENDENTE'}
 Fonte: ${signal.dataSource || 'N/A'}
@@ -6356,10 +6356,41 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                 }
             };
 
-            const formatBRL = (value) => {
-                if (value === null || value === undefined) return 'R$ 0,00';
-                return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const formatCurrency = (value, symbol) => {
+                if (value === null || value === undefined) return '0.00';
+                
+                // Detectar moeda baseado no símbolo
+                let currency = 'USD';
+                let locale = 'en-US';
+                
+                if (symbol?.includes('BRL')) {
+                    currency = 'BRL';
+                    locale = 'pt-BR';
+                } else if (symbol?.includes('EUR')) {
+                    currency = 'EUR';
+                    locale = 'de-DE';
+                } else if (symbol?.includes('GBP')) {
+                    currency = 'GBP';
+                    locale = 'en-GB';
+                } else if (symbol?.includes('JPY')) {
+                    currency = 'JPY';
+                    locale = 'ja-JP';
+                } else {
+                    // Para pares como EURUSDT, BTCUSDT - mostrar como valor decimal
+                    return value.toLocaleString('en-US', { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 6 
+                    });
+                }
+                
+                return value.toLocaleString(locale, { 
+                    style: 'currency', 
+                    currency: currency 
+                });
             };
+
+            // Manter formatBRL para compatibilidade
+            const formatBRL = (value) => formatCurrency(value, 'BRL');
 
             return (
                 <div className="app">
@@ -6375,32 +6406,31 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             onEmergencyStop={handleEmergencyStop}
                         />
                         
-                        {currentView === 'dashboard' && (
-                            <Dashboard
-                                signals={signals}
-                                alphaEngine={alphaEngine}
-                                minScore={minScore}
-                                setMinScore={setMinScore}
-                                dismissSignal={dismissSignal}
-                                copySignalDetails={copySignalDetails}
-                                riskAmount={riskAmount}
-                                setRiskAmount={setRiskAmount}
-                                maxPositions={maxPositions}
-                                setMaxPositions={setMaxPositions}
-                                formatBRL={formatBRL}
-                                orderExecutor={orderExecutor}
-                                mode={mode}
-                                updateTrigger={updateTrigger}
-                                assetType={assetType}
-                                setAssetType={setAssetType}
-                                symbol={symbol}
-                                setSymbol={setSymbol}
-                                memoryDB={memoryDB}
-                                executeSignalFromCard={executeSignalFromCard}
-                            />
-                        )}
-                        
-                        {currentView === 'performance' && (
+                            {currentView === 'dashboard' && (
+                                <Dashboard 
+                                    signals={signals}
+                                    alphaEngine={alphaEngine}
+                                    minScore={minScore}
+                                    setMinScore={setMinScore}
+                                    dismissSignal={dismissSignal}
+                                    copySignalDetails={copySignalDetails}
+                                    riskAmount={riskAmount}
+                                    setRiskAmount={setRiskAmount}
+                                    maxPositions={maxPositions}
+                                    setMaxPositions={setMaxPositions}
+                                    formatBRL={formatBRL}
+                                    formatCurrency={formatCurrency}
+                                    orderExecutor={orderExecutor}
+                                    mode={mode}
+                                    updateTrigger={updateTrigger}
+                                    assetType={assetType}
+                                    setAssetType={setAssetType}
+                                    symbol={symbol}
+                                    setSymbol={setSymbol}
+                                    memoryDB={memoryDB}
+                                    executeSignalFromCard={executeSignalFromCard}
+                                />
+                            )}                        {currentView === 'performance' && (
                             <Performance 
                                 alphaEngine={alphaEngine} 
                                 signals={signals} 
@@ -6951,7 +6981,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
         /* COMPONENTES REACT - Dashboard e Performance (COM ATUALIZAÇÃO EM TEMPO REAL) */
 
-        function Dashboard({ signals, alphaEngine, minScore, setMinScore, dismissSignal, copySignalDetails, riskAmount, setRiskAmount, maxPositions, setMaxPositions, formatBRL, orderExecutor, mode, updateTrigger, assetType, setAssetType, symbol, setSymbol, memoryDB, executeSignalFromCard }) {
+        function Dashboard({ signals, alphaEngine, minScore, setMinScore, dismissSignal, copySignalDetails, riskAmount, setRiskAmount, maxPositions, setMaxPositions, formatBRL, formatCurrency, orderExecutor, mode, updateTrigger, assetType, setAssetType, symbol, setSymbol, memoryDB, executeSignalFromCard }) {
             const [metrics, setMetrics] = useState({ winRate: 0, totalPnL: 0, totalSignals: 0 });
            
             
@@ -7136,10 +7166,12 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                 value={assetType}
                                 onChange={(e) => {
                                     setAssetType(e.target.value);
-                                    // Auto-ajustar símbolo padrão
-                                    if (e.target.value === 'crypto') setSymbol('BTCUSDT');
-                                    else if (e.target.value === 'forex') setSymbol('EURUSD');
-                                    else if (e.target.value === 'stock') setSymbol('AAPL');
+                                    // Auto-ajustar símbolo padrão apenas se ainda estiver vazio
+                                    if (!symbol) {
+                                        if (e.target.value === 'crypto') setSymbol('BTCUSDT');
+                                        else if (e.target.value === 'forex') setSymbol('EURUSDT');
+                                        else if (e.target.value === 'stock') setSymbol('AAPL');
+                                    }
                                 }}
                             >
                                 <option value="crypto">🟡 Criptomoeda</option>
@@ -7230,6 +7262,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                         onCopy={copySignalDetails}
                                         onExecute={executeSignalFromCard}
                                         formatBRL={formatBRL}
+                                        formatCurrency={formatCurrency}
                                         mode={mode}
                                     />
                                 ))}
@@ -7392,7 +7425,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
         /* CONTINUAÇÃO DOS COMPONENTES - SignalCard, RobotView, AuditView, ConnectionsView, Settings */
 
-        function SignalCard({ signal, onDismiss, onCopy, formatBRL, mode, onExecute }) {
+        function SignalCard({ signal, onDismiss, onCopy, formatBRL, formatCurrency, mode, onExecute }) {
             if (!signal) return null;
 
             const getStatusClass = () => {
@@ -7592,16 +7625,16 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                         }}>
                             <strong>Detalhes da Execução:</strong>
                             <div>Order ID: {signal.executionDetails.orderId}</div>
-                            <div>Preço Executado: {formatBRL(signal.executionDetails.executedPrice)}</div>
+                            <div>Preço Executado: {formatCurrency(signal.executionDetails.executedPrice, signal.symbol)}</div>
                             <div>Quantidade: {signal.executionDetails.executedQty}</div>
                         </div>
                     )}
                     
                     <div className="signal-details">
-                        <div><strong>Preço:</strong> {formatBRL(signal.price)}</div>
+                        <div><strong>Preço:</strong> {formatCurrency(signal.price, signal.symbol)}</div>
                         <div><strong>Timeframe:</strong> {signal.timeframe || 'N/A'}</div>
-                        <div><strong>Stop Loss:</strong> {formatBRL(signal.stopLoss)}</div>
-                        <div><strong>Take Profit:</strong> {formatBRL(signal.takeProfit)}</div>
+                        <div><strong>Stop Loss:</strong> {formatCurrency(signal.stopLoss, signal.symbol)}</div>
+                        <div><strong>Take Profit:</strong> {formatCurrency(signal.takeProfit, signal.symbol)}</div>
                         <div><strong>R/R:</strong> 1:2</div>
                         <div><strong>Risco:</strong> R$ 100</div>
                     </div>
@@ -7621,11 +7654,11 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                 fontSize: '16px',
                                 marginLeft: '10px'
                             }}>
-                                {formatBRL(signal.pnl)}
+                                {formatCurrency(signal.pnl, signal.symbol)}
                             </span>
                             {signal.finalPrice && (
                                 <div style={{ fontSize: '12px', marginTop: '5px', color: '#a0a0a0' }}>
-                                    Preço final: {formatBRL(signal.finalPrice)}
+                                    Preço final: {formatCurrency(signal.finalPrice, signal.symbol)}
                                 </div>
                             )}
                         </div>
