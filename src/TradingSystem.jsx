@@ -2282,7 +2282,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             // REST API Fallback
             async fetchKlinesFromREST(symbol, interval = '5m', limit = 200) {
                 try {
-                    const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+                    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
                     const response = await fetch(url);
                     const data = await response.json();
 
@@ -2309,7 +2309,7 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             async fetchSpecificCandleFromREST(symbol, interval = '5m', timestamp) {
                 try {
                     // Buscar alguns candles ao redor do timestamp alvo
-                    const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${timestamp - 600000}&endTime=${timestamp + 600000}&limit=20`;
+                    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&startTime=${timestamp - 600000}&endTime=${timestamp + 600000}&limit=20`;
                     const response = await fetch(url);
 
                     if (!response.ok) {
@@ -2466,8 +2466,8 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 // Carregar dados históricos via REST antes de conectar WebSocket
                 this.fetchKlinesFromREST(this.symbol, interval, 200);
 
-                // Usar WebSocket de Futures (não Spot)
-                const wsUrl = `wss://fstream.binance.com/ws/${symbol.toLowerCase()}@kline_${interval}`;
+                // Usar WebSocket de Spot (unificando com REST API)
+                const wsUrl = `wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${interval}`;
                 // Conectando silenciosamente
 
                 this.binanceWs = new WebSocket(wsUrl);
