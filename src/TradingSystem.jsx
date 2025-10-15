@@ -6958,11 +6958,17 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
             // NOVO: Atualizar métricas usando auditSystem com filtro de 24h
             useEffect(() => {
+                let isMounted = true;
+                
                 const updateMetrics = async () => {
+                    if (!isMounted) return;
+                    
                     try {
                         // Usar auditSystem para dados consistentes (mesma fonte das Métricas Avançadas)
                         if (window.auditSystemRef) {
                             const logs = await window.auditSystemRef.getRecentLogs(200, true); // forceReload = true
+                            
+                            if (!isMounted) return; // Check após operação assíncrona
                             
                             if (Array.isArray(logs) && logs.length > 0) {
                                 // Filtrar apenas últimas 24 horas
@@ -6980,19 +6986,23 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                                     const totalPnL = dailyLogs.reduce((sum, l) => sum + (l.prices?.finalPnL || 0), 0);
                                     const winRate = (wins.length / dailyLogs.length) * 100;
 
-                                    setMetrics({
-                                        winRate: winRate || 0,
-                                        totalPnL: totalPnL || 0,
-                                        totalSignals: dailyLogs.length || 0
-                                    });
+                                    if (isMounted) {
+                                        setMetrics({
+                                            winRate: winRate || 0,
+                                            totalPnL: totalPnL || 0,
+                                            totalSignals: dailyLogs.length || 0
+                                        });
+                                    }
                                     return;
                                 }
                             }
                         }
 
                         // Fallback 1: usar memoryDB se auditSystem não disponível
-                        if (memoryDB) {
+                        if (memoryDB && isMounted) {
                             const dbStats = await memoryDB.getStatistics();
+                            if (!isMounted) return;
+                            
                             if (dbStats && dbStats.total > 0) {
                                 setMetrics({
                                     winRate: dbStats.winRate || 0,
@@ -7004,27 +7014,35 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                         }
 
                         // Fallback 2: usar alphaEngine.performance se outros não disponíveis
-                        if (alphaEngine && alphaEngine.performance) {
-                            setMetrics({
-                                winRate: alphaEngine.performance.winRate || 0,
-                                totalPnL: alphaEngine.performance.totalPnL || 0,
-                                totalSignals: alphaEngine.performance.totalSignals || 0
-                            });
-                        } else {
-                            setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
+                        if (isMounted) {
+                            if (alphaEngine && alphaEngine.performance) {
+                                setMetrics({
+                                    winRate: alphaEngine.performance.winRate || 0,
+                                    totalPnL: alphaEngine.performance.totalPnL || 0,
+                                    totalSignals: alphaEngine.performance.totalSignals || 0
+                                });
+                            } else {
+                                setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
+                            }
                         }
                     } catch (error) {
-                        console.error('Erro ao atualizar métricas do dashboard:', error);
-                        setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
+                        if (isMounted) {
+                            console.error('Erro ao atualizar métricas do dashboard:', error);
+                            setMetrics({ winRate: 0, totalPnL: 0, totalSignals: 0 });
+                        }
                     }
                 };
 
                 updateMetrics();
 
-                // OTIMIZADO: Atualizar a cada 2 segundos para maior responsividade
-                const interval = setInterval(updateMetrics, 2000);
-                return () => clearInterval(interval);
-            }, [alphaEngine, updateTrigger, memoryDB]);
+                // OTIMIZADO: Atualizar a cada 5 segundos (reduzido para evitar travamentos)
+                const interval = setInterval(updateMetrics, 5000);
+                
+                return () => {
+                    isMounted = false;
+                    clearInterval(interval);
+                };
+            }, []); // Removidas dependências instáveis para evitar loops
 
             return (
                 <div>
@@ -8670,20 +8688,26 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
             const [timeRange, setTimeRange] = useState('7d');
 
             useEffect(() => {
+                let isMounted = true;
+                
                 const calculateMetrics = async () => {
-                    if (!auditSystem || !alphaEngine || !memoryDB) return;
+                    if (!isMounted) return;
+                    if (!window.auditSystemRef) return;
 
-                    const logs = await auditSystem.getRecentLogs(200);
-                    if (!Array.isArray(logs)) {
-                        console.warn('⚠️ getRecentLogs não retornou array em AdvancedMetrics:', logs);
-                        return;
-                    }
-                    const completedLogs = logs.filter(l => l.outcome && l.outcome !== 'PENDENTE');
-                    
-                    if (completedLogs.length === 0) {
-                        setMetrics(null);
-                        return;
-                    }
+                    try {
+                        const logs = await window.auditSystemRef.getRecentLogs(200);
+                        if (!isMounted) return;
+                        
+                        if (!Array.isArray(logs)) {
+                            console.warn('⚠️ getRecentLogs não retornou array em AdvancedMetrics:', logs);
+                            return;
+                        }
+                        const completedLogs = logs.filter(l => l.outcome && l.outcome !== 'PENDENTE');
+                        
+                        if (completedLogs.length === 0) {
+                            if (isMounted) setMetrics(null);
+                            return;
+                        }
 
                     const cutoffDate = new Date();
                     if (timeRange === '24h') cutoffDate.setHours(cutoffDate.getHours() - 24);
@@ -8807,37 +8831,51 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
                         }
                     });
 
-                    setMetrics({
-                        totalTrades: filteredLogs.length,
-                        wins: wins.length,
-                        losses: losses.length,
-                        expired: expired.length,
-                        winRate,
-                        lossRate,
-                        expiredRate,
-                        totalPnL,
-                        profitFactor,
-                        expectancy,
-                        kellyCriterion,
-                        sharpeRatio,
-                        maxDrawdown,
-                        recoveryFactor,
-                        avgWin,
-                        avgLoss,
-                        avgDuration,
-                        maxWinStreak,
-                        maxLossStreak,
-                        hourlyPerformance,
-                        bestHour: bestHour ? { hour: bestHour[0], data: bestHour[1] } : null,
-                        worstHour: worstHour ? { hour: worstHour[0], data: worstHour[1] } : null,
-                        scorePerformance
-                    });
+                    if (isMounted) {
+                        setMetrics({
+                            totalTrades: filteredLogs.length,
+                            wins: wins.length,
+                            losses: losses.length,
+                            expired: expired.length,
+                            winRate,
+                            lossRate,
+                            expiredRate,
+                            totalPnL,
+                            profitFactor,
+                            expectancy,
+                            kellyCriterion,
+                            sharpeRatio,
+                            maxDrawdown,
+                            recoveryFactor,
+                            avgWin,
+                            avgLoss,
+                            avgDuration,
+                            maxWinStreak,
+                            maxLossStreak,
+                            hourlyPerformance,
+                            bestHour: bestHour ? { hour: bestHour[0], data: bestHour[1] } : null,
+                            worstHour: worstHour ? { hour: worstHour[0], data: worstHour[1] } : null,
+                            scorePerformance
+                        });
+                    }
+                } catch (error) {
+                    if (isMounted) {
+                        console.error('Erro ao calcular métricas avançadas:', error);
+                        setMetrics(null);
+                    }
+                }
                 };
 
                 calculateMetrics();
-                const interval = setInterval(calculateMetrics, 10000);
-                return () => clearInterval(interval);
-            }, [auditSystem, alphaEngine, memoryDB, timeRange]);
+                
+                // Intervalo mais longo para evitar sobrecarga
+                const interval = setInterval(calculateMetrics, 15000);
+                
+                return () => {
+                    isMounted = false;
+                    clearInterval(interval);
+                };
+            }, [timeRange]); // Apenas timeRange como dependência
 
             if (!metrics) {
                 return (
