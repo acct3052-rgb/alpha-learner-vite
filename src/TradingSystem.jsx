@@ -7839,11 +7839,16 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                         else if (timeRange === '30d') cutoffDate.setDate(cutoffDate.getDate() - 30);
                         else cutoffDate.setDate(cutoffDate.getDate() - 7); // default 7d
 
+                        console.log(`🔄 [AUDITORIA] Mudando filtro para: ${timeRange} (desde ${cutoffDate.toLocaleString('pt-BR')})`);
+
                         // Buscar dados diretamente da tabela audit_logs com filtro temporal
+                        // APENAS logs com resultados finais (igual às métricas avançadas)
                         const { data: logsData, error } = await window.supabase
                             .from('audit_logs')
                             .select('*')
                             .gte('generated_at', cutoffDate.toISOString())
+                            .not('outcome', 'is', null)
+                            .neq('outcome', 'PENDENTE')
                             .order('generated_at', { ascending: false })
                             .limit(200); // Limite para performance
 
@@ -7853,6 +7858,8 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             console.error('Erro ao buscar logs de auditoria:', error);
                             return;
                         }
+
+                        console.log(`📊 [AUDITORIA] Filtro ${timeRange}: ${(logsData || []).length} logs encontrados após ${cutoffDate.toLocaleString('pt-BR')}`);
 
                         // Converter dados do Supabase para formato esperado
                         const filteredLogs = (logsData || []).map(log => ({
