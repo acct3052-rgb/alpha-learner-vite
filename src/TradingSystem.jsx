@@ -7874,12 +7874,52 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             reason: log.reason
                         }));
 
+                        // Calcular métricas localmente baseadas nos logs filtrados
+                        const perfByHourLocal = {};
+                        const perfByScoreLocal = {};
+                        const indicatorPerfLocal = {};
+
+                        filteredLogs.forEach(log => {
+                            // Performance por horário
+                            const hour = log.hourOfDay;
+                            if (!perfByHourLocal[hour]) {
+                                perfByHourLocal[hour] = { total: 0, wins: 0, totalPnL: 0 };
+                            }
+                            perfByHourLocal[hour].total++;
+                            if (log.outcome === 'ACERTO') perfByHourLocal[hour].wins++;
+                            perfByHourLocal[hour].totalPnL += (log.prices.finalPnL || 0);
+
+                            // Performance por score
+                            const score = log.scoreRange;
+                            if (score && !perfByScoreLocal[score]) {
+                                perfByScoreLocal[score] = { total: 0, wins: 0, totalPnL: 0 };
+                            }
+                            if (score) {
+                                perfByScoreLocal[score].total++;
+                                if (log.outcome === 'ACERTO') perfByScoreLocal[score].wins++;
+                                perfByScoreLocal[score].totalPnL += (log.prices.finalPnL || 0);
+                            }
+
+                            // Performance por indicador (baseado em metadata se disponível)
+                            const indicators = log.metadata?.indicators || [];
+                            indicators.forEach(indicator => {
+                                if (!indicatorPerfLocal[indicator]) {
+                                    indicatorPerfLocal[indicator] = { total: 0, wins: 0, totalPnL: 0 };
+                                }
+                                indicatorPerfLocal[indicator].total++;
+                                if (log.outcome === 'ACERTO') indicatorPerfLocal[indicator].wins++;
+                                indicatorPerfLocal[indicator].totalPnL += (log.prices.finalPnL || 0);
+                            });
+                        });
+
+                        console.log(`📈 [AUDITORIA] Métricas calculadas: ${Object.keys(perfByHourLocal).length} horários, ${Object.keys(perfByScoreLocal).length} scores`);
+
                         if (isMounted) {
                             setLogs(filteredLogs);
-                            setAlerts(auditSystem.getHealthAlerts());
-                            setPerfByHour(auditSystem.getPerformanceByHour());
-                            setPerfByScore(auditSystem.getPerformanceByScore());
-                            setIndicatorPerf(auditSystem.getIndicatorPerformance());
+                            setAlerts(auditSystem.getHealthAlerts()); // Alertas podem manter cache
+                            setPerfByHour(perfByHourLocal);
+                            setPerfByScore(perfByScoreLocal);
+                            setIndicatorPerf(indicatorPerfLocal);
                         }
                     } catch (error) {
                         console.error('Erro ao atualizar dados de auditoria:', error);
