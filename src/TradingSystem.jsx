@@ -7818,6 +7818,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
 
         function AuditView({ auditSystem, formatBRL }) {
             const [activeTab, setActiveTab] = useState('logs');
+            const [timeRange, setTimeRange] = useState('7d');
             const [logs, setLogs] = useState([]);
             const [alerts, setAlerts] = useState([]);
             const [perfByHour, setPerfByHour] = useState({});
@@ -7825,21 +7826,67 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
             const [indicatorPerf, setIndicatorPerf] = useState({});
 
             useEffect(() => {
-                if (!auditSystem) return;
-
+                let isMounted = true;
+                
                 const updateData = async () => {
-                    const recentLogs = await auditSystem.getRecentLogs(50, true); // forceReload = true
-                    setLogs(recentLogs);
-                    setAlerts(auditSystem.getHealthAlerts());
-                    setPerfByHour(auditSystem.getPerformanceByHour());
-                    setPerfByScore(auditSystem.getPerformanceByScore());
-                    setIndicatorPerf(auditSystem.getIndicatorPerformance());
+                    if (!isMounted || !auditSystem || !window.supabase) return;
+
+                    try {
+                        // Calcular data de corte baseada no timeRange
+                        const cutoffDate = new Date();
+                        if (timeRange === '24h') cutoffDate.setHours(cutoffDate.getHours() - 24);
+                        else if (timeRange === '7d') cutoffDate.setDate(cutoffDate.getDate() - 7);
+                        else if (timeRange === '30d') cutoffDate.setDate(cutoffDate.getDate() - 30);
+                        else cutoffDate.setDate(cutoffDate.getDate() - 7); // default 7d
+
+                        // Buscar dados diretamente da tabela audit_logs com filtro temporal
+                        const { data: logsData, error } = await window.supabase
+                            .from('audit_logs')
+                            .select('*')
+                            .gte('generated_at', cutoffDate.toISOString())
+                            .order('generated_at', { ascending: false })
+                            .limit(200); // Limite para performance
+
+                        if (!isMounted) return;
+
+                        if (error) {
+                            console.error('Erro ao buscar logs de auditoria:', error);
+                            return;
+                        }
+
+                        // Converter dados do Supabase para formato esperado
+                        const filteredLogs = (logsData || []).map(log => ({
+                            signalId: log.signal_id,
+                            generatedAt: log.generated_at,
+                            outcome: log.outcome,
+                            outcomeTime: log.outcome_time,
+                            prices: log.prices || {},
+                            scoreRange: log.score_range,
+                            hourOfDay: log.hour_of_day,
+                            metadata: log.metadata || {},
+                            reason: log.reason
+                        }));
+
+                        if (isMounted) {
+                            setLogs(filteredLogs);
+                            setAlerts(auditSystem.getHealthAlerts());
+                            setPerfByHour(auditSystem.getPerformanceByHour());
+                            setPerfByScore(auditSystem.getPerformanceByScore());
+                            setIndicatorPerf(auditSystem.getIndicatorPerformance());
+                        }
+                    } catch (error) {
+                        console.error('Erro ao atualizar dados de auditoria:', error);
+                    }
                 };
 
                 updateData();
-                const interval = setInterval(updateData, 5000);
-                return () => clearInterval(interval);
-            }, [auditSystem]);
+                const interval = setInterval(updateData, 10000); // Atualizar a cada 10s para evitar spam
+                
+                return () => {
+                    isMounted = false;
+                    clearInterval(interval);
+                };
+            }, [auditSystem, timeRange]);
 
             const handleExport = () => {
                 if (!auditSystem) return;
@@ -7936,7 +7983,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
             }
 
             return (
-                <div>
+                <>
                     <div className="warning-box">
                         📊 Sistema de Auditoria e Validação
                         <div style={{ marginTop: '8px', fontSize: '11px' }}>
@@ -7964,21 +8011,49 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                     )}
 
                     <div className="card">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h3>Dados de Auditoria</h3>
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                                <button className="btn btn-secondary" onClick={handleDiagnostic}>
-                                    🔍 Diagnóstico
-                                </button>
-                                <button className="btn btn-secondary" onClick={handleValidateData}>
-                                    ✅ Validar Dados
-                                </button>
-                                <button className="btn btn-secondary" onClick={handleClearOldData}>
-                                    🗑️ Limpar Antigos
-                                </button>
-                                <button className="btn btn-primary" onClick={handleExport}>
-                                    📥 Exportar CSV
-                                </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                                {/* Filtros de tempo */}
+                                <div className="mode-selector" style={{ width: 'auto' }}>
+                                    <div 
+                                        className={`mode-btn ${timeRange === '24h' ? 'active' : ''}`}
+                                        onClick={() => setTimeRange('24h')}
+                                        style={{ padding: '8px 16px', fontSize: '14px' }}
+                                    >
+                                        24h
+                                    </div>
+                                    <div 
+                                        className={`mode-btn ${timeRange === '7d' ? 'active' : ''}`}
+                                        onClick={() => setTimeRange('7d')}
+                                        style={{ padding: '8px 16px', fontSize: '14px' }}
+                                    >
+                                        7 dias
+                                    </div>
+                                    <div 
+                                        className={`mode-btn ${timeRange === '30d' ? 'active' : ''}`}
+                                        onClick={() => setTimeRange('30d')}
+                                        style={{ padding: '8px 16px', fontSize: '14px' }}
+                                    >
+                                        30 dias
+                                    </div>
+                                </div>
+                                
+                                {/* Botões de ação */}
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button className="btn btn-secondary" onClick={handleDiagnostic}>
+                                        🔍 Diagnóstico
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={handleValidateData}>
+                                        ✅ Validar Dados
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={handleClearOldData}>
+                                        🗑️ Limpar Antigos
+                                    </button>
+                                    <button className="btn btn-primary" onClick={handleExport}>
+                                        📥 Exportar CSV
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -8142,7 +8217,7 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             </div>
                         )}
                     </div>
-                </div>
+                </>
             );
         }
 
@@ -8155,28 +8230,24 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
             const [updateTrigger, setUpdateTrigger] = useState(0);
             const [isReady, setIsReady] = useState(false);
 
-
             // ✅ ADICIONE ESTE useEffect:
-    useEffect(() => {
-        const initialize = async () => {
-            if (apiManager) {
-                await apiManager.ensureInitialized();
-                setIsReady(true);
-            }
-        };
-        initialize();
-    }, [apiManager]);
+            useEffect(() => {
+                const initialize = async () => {
+                    if (apiManager) {
+                        await apiManager.ensureInitialized();
+                        setIsReady(true);
+                    }
+                };
+                initialize();
+            }, [apiManager]);
 
-    if (!apiManager || !isReady) { // ✅ MODIFICADO
-        return (
-            <div className="card">
-                <h3>⏳ Carregando conexões...</h3>
-                <p>Aguarde enquanto carregamos seus dados do Supabase...</p>
-            </div>
-        );
-    }
-            if (!apiManager) {
-                return <div className="card"><h3>⏳ Carregando...</h3></div>;
+            if (!apiManager || !isReady) { // ✅ MODIFICADO
+                return (
+                    <div className="card">
+                        <h3>⏳ Carregando conexões...</h3>
+                        <p>Aguarde enquanto carregamos seus dados do Supabase...</p>
+                    </div>
+                );
             }
 
             const handleTest = async () => {
