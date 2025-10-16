@@ -4666,12 +4666,13 @@ calculateVolumeScore(volume) {
                 source: null        // Fonte do preço (monitoring/validation)
             });
 
-            // 🎯 Sistema de otimização de sinais - Buffer de candidatos
-            const signalCandidatesBuffer = useRef(new Map()); // Map<entryTime, {signal, timer}>
+            // 🎯 Sistema de cache local para sinais de monitoramento
+            const signalCandidatesCache = useRef(new Map()); // Map<entryTime, {candidates: [], bestSignal: null, timer: null}>
             const SIGNAL_OPTIMIZATION = {
                 enabled: true,  // Ativar otimização de sinais
                 sendBeforeEntry: 60000,  // Enviar 60s (1min) antes da entrada
-                criteria: 'best_score'  // 'best_score' | 'best_ml' | 'both'
+                criteria: 'best_score',  // 'best_score' | 'best_ml' | 'both'
+                cacheCleanupDelay: 5000  // Limpar cache 5s após envio/timeout
             };
 
             // 🎯 Função para comparar qualidade de sinais
@@ -4688,22 +4689,58 @@ calculateVolumeScore(volume) {
                 return false;
             };
 
-            // 🎯 Função para agendar envio do sinal otimizado
-            const scheduleOptimizedSignal = (signal, entryTimeKey) => {
+            // 🗑️ Função para limpar cache de candidatos descartados
+            const cleanupSignalsCache = (entryTimeKey, reason = 'completed') => {
+                const cacheEntry = signalCandidatesCache.current.get(entryTimeKey);
+                if (cacheEntry) {
+                    console.log(`🗑️ [CACHE] Limpando candidatos descartados - ${reason}`);
+                    console.log(`   📊 Candidatos descartados: ${cacheEntry.candidates.length - (cacheEntry.bestSignal ? 1 : 0)}`);
+                    
+                    // Cancelar timer se existir
+                    if (cacheEntry.timer) clearTimeout(cacheEntry.timer);
+                    
+                    // Remover do cache
+                    signalCandidatesCache.current.delete(entryTimeKey);
+                    
+                    console.log(`   ✅ Cache limpo para entrada ${new Date(entryTimeKey).toLocaleTimeString('pt-BR')}`);
+                }
+            };
+
+            // 🎯 Função para agendar envio do melhor sinal (apenas esse vai para o banco)
+            const scheduleOptimizedSignal = (entryTimeKey) => {
+                const cacheEntry = signalCandidatesCache.current.get(entryTimeKey);
+                if (!cacheEntry || !cacheEntry.bestSignal) return;
+
+                const signal = cacheEntry.bestSignal;
                 const now = Date.now();
                 const entryTime = signal.entryTime.getTime();
                 const sendTime = entryTime - SIGNAL_OPTIMIZATION.sendBeforeEntry; // 60s antes
                 const delay = sendTime - now;
 
-                // Função para enviar o sinal (reutilizada para agendado ou imediato)
-                const sendSignal = () => {
-                    console.log('%c✅ ENVIANDO MELHOR SINAL!', 'color: #00ff88; font-weight: bold; font-size: 14px;');
-                    console.log(`   📊 Score final: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+                // Função para enviar o melhor sinal para o banco
+                const sendBestSignal = () => {
+                    const currentCache = signalCandidatesCache.current.get(entryTimeKey);
+                    if (!currentCache || !currentCache.bestSignal) {
+                        console.warn('🚫 [CACHE] Melhor sinal não encontrado no momento do envio');
+                        cleanupSignalsCache(entryTimeKey, 'signal_not_found');
+                        return;
+                    }
 
-                    // Enviar o sinal
+                    const bestSignal = currentCache.bestSignal;
+                    const discardedCount = currentCache.candidates.length - 1;
+
+                    console.log('%c🎯 ENVIANDO MELHOR SINAL PARA BANCO!', 'color: #00ff88; font-weight: bold; font-size: 16px;');
+                    console.log(`   📊 Score final: ${bestSignal.score}% | ML: ${((bestSignal.mlConfidence || 0) * 100).toFixed(1)}%`);
+                    console.log(`   🗑️ Sinais descartados: ${discardedCount}`);
+                    
+                    // ✅ APENAS O MELHOR SINAL VAI PARA O BANCO DE DADOS
                     setSignals(prev => {
-                        const newSignals = [signal, ...prev].slice(0, 10);
+                        const newSignals = [bestSignal, ...prev].slice(0, 10);
                         newSignals[0].timestamp = new Date();
+                        newSignals[0].cacheStats = {
+                            totalCandidates: currentCache.candidates.length,
+                            discardedCount: discardedCount
+                        };
                         return newSignals;
                     });
 
@@ -4712,25 +4749,25 @@ calculateVolumeScore(volume) {
                         memoryDBRef.current.notifyChange();
                     }
 
-                    showNotification(`Melhor sinal ${signal.direction} - Score: ${signal.score}%`);
+                    showNotification(`Melhor sinal ${bestSignal.direction} - Score: ${bestSignal.score}%`);
                     playAlert();
-                    scheduleSignalVerification(signal);
+                    scheduleSignalVerification(bestSignal);
 
                     // Telegram
                     if (window.telegramNotifier && window.telegramNotifier.isEnabled()) {
-                        window.telegramNotifier.notifySignal(signal);
+                        window.telegramNotifier.notifySignal(bestSignal);
                     }
 
                     // Executar ordem (auto ou manual)
                     if (orderExecutorRef.current) {
                         orderExecutorRef.current.executeSignalAuto(
-                            signal,
+                            bestSignal,
                             modeRef.current,
                             riskAmount
                         ).then(executionResult => {
                             if (executionResult.success) {
                                 showNotification(
-                                    `🤖 ORDEM EXECUTADA: ${signal.direction} @ ${executionResult.executedPrice.toFixed(2)} | ID: ${executionResult.orderId}`
+                                    `🤖 ORDEM EXECUTADA: ${bestSignal.direction} @ ${executionResult.executedPrice.toFixed(2)} | ID: ${executionResult.orderId}`
                                 );
                                 signal.executed = true;
                                 signal.executionDetails = executionResult;
@@ -4746,58 +4783,93 @@ calculateVolumeScore(volume) {
                         });
                     }
 
-                    // Limpar do buffer
-                    signalCandidatesBuffer.current.delete(entryTimeKey);
+                    // 🧹 Limpar cache após envio do melhor sinal
+                    setTimeout(() => cleanupSignalsCache(entryTimeKey, 'sent'), SIGNAL_OPTIMIZATION.cacheCleanupDelay);
+                };
+
+                // 🚫 Função para quando não há sinais com score mínimo
+                const handleNoValidSignals = () => {
+                    console.log('🚫 [TIMEOUT] Nenhum sinal com score mínimo encontrado');
+                    console.log(`   ⏰ Timeout atingido para entrada ${new Date(entryTimeKey).toLocaleTimeString('pt-BR')}`);
+                    cleanupSignalsCache(entryTimeKey, 'no_valid_signals');
                 };
 
                 if (delay > 0) {
-                    // Tempo suficiente - agendar para envio no momento ideal
-                    console.log(`📅 Sinal agendado para ${new Date(sendTime).toLocaleTimeString('pt-BR')} (em ${Math.floor(delay/1000)}s)`);
-                    console.log(`   Score: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+                    // Tempo suficiente - agendar verificação do melhor sinal
+                    console.log(`📅 Verificação agendada para ${new Date(sendTime).toLocaleTimeString('pt-BR')} (em ${Math.floor(delay/1000)}s)`);
+                    
+                    // Agendar envio do melhor sinal ou timeout se não houver
+                    const timer = setTimeout(() => {
+                        const currentCache = signalCandidatesCache.current.get(entryTimeKey);
+                        if (currentCache && currentCache.bestSignal && currentCache.bestSignal.score >= minScoreRef.current) {
+                            sendBestSignal();
+                        } else {
+                            handleNoValidSignals();
+                        }
+                    }, delay);
 
-                    const timer = setTimeout(sendSignal, delay);
-                    signalCandidatesBuffer.current.set(entryTimeKey, { signal, timer });
+                    // Atualizar timer no cache
+                    const cacheEntry = signalCandidatesCache.current.get(entryTimeKey);
+                    if (cacheEntry) {
+                        cacheEntry.timer = timer;
+                    }
                 } else {
-                    // Tempo insuficiente - enviar IMEDIATAMENTE
-                    console.log(`⚡ Sinal gerado tarde (${Math.abs(Math.floor(delay/1000))}s após ideal) - ENVIANDO IMEDIATAMENTE`);
-                    console.log(`   Score: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
-                    console.log(`   ⏰ Entrada em: ${Math.floor((entryTime - now)/1000)}s`);
-
-                    sendSignal();
+                    // Tempo insuficiente - verificar imediatamente
+                    console.log(`⚡ Verificação imediata (${Math.abs(Math.floor(delay/1000))}s após ideal)`);
+                    const currentCache = signalCandidatesCache.current.get(entryTimeKey);
+                    if (currentCache && currentCache.bestSignal && currentCache.bestSignal.score >= minScoreRef.current) {
+                        sendBestSignal();
+                    } else {
+                        handleNoValidSignals();
+                    }
                 }
             };
 
-            // 🎯 Função principal de otimização de sinais
+            // 🎯 Função principal de cache de sinais (NÃO salva no banco ainda)
             const handleOptimizedSignal = (signal) => {
                 const entryTimeKey = signal.entryTime.getTime();
 
-                console.log('\n🔍 [OTIMIZAÇÃO] Novo candidato de sinal recebido');
+                console.log('\n�️ [CACHE LOCAL] Novo candidato recebido');
                 console.log(`   ⏰ Entrada: ${signal.entryTime.toLocaleTimeString('pt-BR')}`);
                 console.log(`   📊 Score: ${signal.score}% | ML: ${((signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+                console.log(`   🚫 NÃO SALVO NO BANCO - apenas cache local`);
 
-                // Verificar se já existe um candidato para este horário de entrada
-                const existing = signalCandidatesBuffer.current.get(entryTimeKey);
+                // Buscar ou criar entrada no cache
+                let cacheEntry = signalCandidatesCache.current.get(entryTimeKey);
+                
+                if (!cacheEntry) {
+                    // Primeira vez para este horário - criar entrada no cache
+                    cacheEntry = {
+                        candidates: [],
+                        bestSignal: null,
+                        timer: null
+                    };
+                    signalCandidatesCache.current.set(entryTimeKey, cacheEntry);
+                    console.log('   🆕 Primeira entrada para este horário');
+                }
 
-                if (existing) {
-                    console.log('   🔄 Já existe candidato para este horário');
-                    console.log(`      Atual: Score ${existing.signal.score}% | ML ${((existing.signal.mlConfidence || 0) * 100).toFixed(1)}%`);
+                // Adicionar ao cache de candidatos
+                cacheEntry.candidates.push(signal);
 
-                    // Comparar qualidade
-                    const isBetter = compareSignalQuality(signal, existing.signal);
-
-                    if (isBetter) {
-                        console.log('%c   ✅ NOVO SINAL É MELHOR! Substituindo...', 'color: #00ff88; font-weight: bold;');
-                        // Cancelar timer anterior
-                        clearTimeout(existing.timer);
-                        // Agendar novo sinal
-                        scheduleOptimizedSignal(signal, entryTimeKey);
+                // Verificar se é o melhor sinal até agora
+                if (!cacheEntry.bestSignal || compareSignalQuality(signal, cacheEntry.bestSignal)) {
+                    const wasBetter = cacheEntry.bestSignal !== null;
+                    cacheEntry.bestSignal = signal;
+                    
+                    if (wasBetter) {
+                        console.log('%c   🏆 NOVO MELHOR SINAL! Substituindo...', 'color: #00ff88; font-weight: bold;');
+                        console.log(`      Anterior: Score ${cacheEntry.candidates.find(c => c !== signal).score}%`);
+                        console.log(`      Novo: Score ${signal.score}%`);
                     } else {
-                        console.log('   ❌ Sinal existente é melhor. Mantendo atual.');
+                        console.log('   ✅ Primeiro candidato - agendando verificação...');
+                        // Só agendar na primeira vez
+                        scheduleOptimizedSignal(entryTimeKey);
                     }
                 } else {
-                    console.log('   ✅ Primeiro candidato para este horário. Agendando...');
-                    scheduleOptimizedSignal(signal, entryTimeKey);
+                    console.log('   📝 Candidato adicionado ao cache (não é o melhor)');
                 }
+
+                console.log(`   📊 Cache atual: ${cacheEntry.candidates.length} candidatos, melhor score: ${cacheEntry.bestSignal.score}%`);
             };
 
 const modeRef = useRef(mode);
