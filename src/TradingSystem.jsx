@@ -874,10 +874,10 @@ const { useState, useEffect, useRef } = React
                 const takeProfit = signal.takeProfit;
                 const quantity = this.calculatePositionSize(signal, riskAmount);
 
-                const isForex = this.currentSymbol.includes('USD') && 
-                               !this.currentSymbol.includes('BTC') && 
-                               !this.currentSymbol.includes('ETH') && 
-                               !this.currentSymbol.includes('BNB');
+                const isForex = signal.symbol.includes('USD') && 
+                               !signal.symbol.includes('BTC') && 
+                               !signal.symbol.includes('ETH') && 
+                               !signal.symbol.includes('BNB');
                 const precision = isForex ? 5 : 2;
 
                 return {
@@ -5768,12 +5768,12 @@ useEffect(() => {
                         
                         // 🎯 PRECISÃO DINÂMICA baseada no símbolo
                         let minVariation;
-                        if (position.signal.symbol.includes('JPY')) {
+                        if (signal.symbol.includes('JPY')) {
                             // Pares com JPY: 1 pip = 0.01
                             minVariation = 0.01;
-                        } else if (position.signal.symbol.includes('USD') && 
-                                   !position.signal.symbol.includes('BTC') && 
-                                   !position.signal.symbol.includes('ETH')) {
+                        } else if (signal.symbol.includes('USD') && 
+                                   !signal.symbol.includes('BTC') && 
+                                   !signal.symbol.includes('ETH')) {
                             // Forex principais: 1 pip = 0.0001
                             minVariation = 0.0001;
                         } else {
