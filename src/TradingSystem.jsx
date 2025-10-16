@@ -5752,12 +5752,18 @@ useEffect(() => {
                         console.log(`   🔍 [VERIFICATION] Estes são os dados que serão usados para calcular o resultado`);
                         console.log(`   ✅ [ASSURANCE] Cache foi IGNORADO - apenas dados frescos da REST API`);
                         
-                        // 🎨 Cor final para confirmação do resultado
-                        let finalColor = 'DOJI ⚪';
-                        if (expirationCandle.close > expirationCandle.open) finalColor = 'VERDE 🟢';
-                        else if (expirationCandle.close < expirationCandle.open) finalColor = 'VERMELHO 🔴';
-                        console.log(`   🎨 Resultado: ${finalColor}`);
-                        console.log(`   📈 Movimento: ${(expirationCandle.close - expirationCandle.open).toFixed(2)} pontos`);
+                        // 🎨 Cor da API Binance (FONTE PRINCIPAL)
+                        let apiColor = 'DOJI ⚪';
+                        let apiColorEmoji = '⚪';
+                        if (expirationCandle.close > expirationCandle.open) {
+                            apiColor = 'VERDE 🟢';
+                            apiColorEmoji = '🟢';
+                        } else if (expirationCandle.close < expirationCandle.open) {
+                            apiColor = 'VERMELHO 🔴';
+                            apiColorEmoji = '🔴';
+                        }
+                        console.log(`   � COR API BINANCE (PRINCIPAL): ${apiColor}`);
+                        console.log(`   📈 Movimento: ${(expirationCandle.close - expirationCandle.open).toFixed(5)} pontos`);
 
                         // ✅ ESTRATÉGIA LIMPA: Não precisa validar actualEntryPrice
                         // Usamos apenas Open→Close do candle anterior
@@ -5798,32 +5804,35 @@ useEffect(() => {
                         exitPrice = expirationClose;
                         candleVariation = exitPrice - entryPrice;
 
-                            isCandleGreen = candleVariation > minVariation;
-                            isCandleRed = candleVariation < -minVariation;
-                            isDoji = Math.abs(candleVariation) <= minVariation;
-                            candleColor = isCandleGreen ? 'VERDE' : isCandleRed ? 'VERMELHO' : 'DOJI';
+                            // 🎯 USAR COR DA API BINANCE COMO PRINCIPAL
+                            // DOJI apenas se valores são EXATAMENTE IGUAIS
+                            const isExactlyEqual = (candleVariation === 0);
+                            const isBinanceGreen = (expirationCandle.close > expirationCandle.open);
+                            const isBinanceRed = (expirationCandle.close < expirationCandle.open);
+                            const isBinanceDoji = (expirationCandle.close === expirationCandle.open);
+                            
+                            // Usar resultado da API Binance
+                            isCandleGreen = isBinanceGreen;
+                            isCandleRed = isBinanceRed;
+                            isDoji = isBinanceDoji; // Apenas se exatamente igual
+                            candleColor = isDoji ? 'DOJI' : isCandleGreen ? 'VERDE' : 'VERMELHO';
 
-                        console.log(`\n📊 [ESTRATÉGIA LIMPA: OPEN→CLOSE]`);
-                        console.log(`   📥 Open: ${entryPrice.toFixed(2)}`);
-                        console.log(`   📤 Close: ${exitPrice.toFixed(2)}`);
-                        console.log(`   📏 Variação: ${candleVariation.toFixed(2)} pts`);
-                        console.log(`   🎨 Resultado: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`\n📊 [RESULTADO USANDO COR API BINANCE]`);
+                        console.log(`   📥 Open: ${entryPrice.toFixed(5)}`);
+                        console.log(`   📤 Close: ${exitPrice.toFixed(5)}`);
+                        console.log(`   📏 Variação: ${candleVariation.toFixed(5)} pts`);
+                        console.log(`   � API Binance: ${apiColor}`);
+                        console.log(`   �🎨 Resultado Final: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
                         console.log(`   📌 Candle: ${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')}`);
+                        console.log(`   ✅ DOJI apenas se Open === Close (exatamente igual)`);
 
-                        // 🎯 CALCULAR RESULTADO baseado na cor determinada
+                        // 🎯 CALCULAR RESULTADO baseado na COR DA API BINANCE
                         if (isDoji) {
-                            // ⚠️ VERIFICAR: Se variação é EXATAMENTE 0.00, pode ser erro de precisão
-                            if (candleVariation === 0) {
-                                result = 'EXPIRADO';
-                                pnl = 0;
-                                console.warn(`   ⚠️ DADOS INSUFICIENTES! Entrada = Saída (${entryPrice.toFixed(2)})`);
-                                console.warn(`   ⚠️ Possível erro de precisão da API - marcando como EXPIRADO`);
-                            } else {
-                                result = 'EMPATE';
-                                pnl = 0;
-                                console.log(`   ⚖️ EMPATE! DOJI - variação insignificante (${Math.abs(candleVariation).toFixed(8)})`);
-                                console.log(`   📏 Margem mínima: ${minVariation.toFixed(8)} | Variação real: ${Math.abs(candleVariation).toFixed(8)}`);
-                            }
+                            // DOJI: Open === Close exatamente
+                            result = 'EMPATE';
+                            pnl = 0;
+                            console.log(`   ⚖️ EMPATE! DOJI EXATO - Open === Close (${entryPrice.toFixed(5)})`);
+                            console.log(`   🎯 API Binance confirma: Valores exatamente iguais`);
                         } else if (signal.direction === 'BUY') {
                             // CALL: precisa ser VERDE (subida)
                             console.log(`   🔍 [BUY/CALL] Esperado: SUBIDA 🟢 | Resultado: ${candleColor}`);
