@@ -12,6 +12,7 @@ Sistema de trading com Machine Learning totalmente migrado para Vite + React.
 - ✅ Watchdog anti-freeze para execução contínua
 - ✅ WebSocket com reconexão infinita
 - ✅ Auto-cleanup de memória
+- ✅ Integração IQ Option API (WebSocket + Python Bridge)
 
 ## 📦 Como Usar
 
@@ -28,11 +29,24 @@ npm run preview # Preview da build
 src/
 ├── App.jsx           # Entry point
 ├── TradingSystem.jsx # Sistema completo (8,220 linhas)
+├── services/
+│   ├── iqOptionAPI.js    # IQ Option WebSocket direto
+│   └── iqOptionBridge.js # IQ Option via Python Bridge
 ├── utils/
 │   └── supabase.js   # Cliente Supabase
 └── styles/
     └── main.css      # Estilos
+
+python_bridge/
+├── iqoption_server.py   # Servidor Flask para IQ Option
+└── requirements.txt     # Dependências Python
 ```
+
+## 📚 Documentação Adicional
+
+- **[IQOPTION_SETUP.md](./IQOPTION_SETUP.md)** - Guia completo de instalação da IQ Option API
+- **[QUICKSTART_IQOPTION.md](./QUICKSTART_IQOPTION.md)** - Início rápido IQ Option (5 minutos)
+- **[SETUP.md](./SETUP.md)** - Setup geral do repositório
 
 ---
 

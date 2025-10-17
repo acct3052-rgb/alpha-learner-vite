@@ -18,6 +18,17 @@ build
 .env.test.local
 .env.production.local
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
