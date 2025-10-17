@@ -44,8 +44,14 @@ python_bridge/
 
 ## 📚 Documentação Adicional
 
-- **[IQOPTION_SETUP.md](./IQOPTION_SETUP.md)** - Guia completo de instalação da IQ Option API
-- **[QUICKSTART_IQOPTION.md](./QUICKSTART_IQOPTION.md)** - Início rápido IQ Option (5 minutos)
+### IQ Option API Integration
+- **[RESUMO_IQOPTION.md](./RESUMO_IQOPTION.md)** - 🌟 COMECE AQUI! Resumo rápido
+- **[QUICKSTART_IQOPTION.md](./QUICKSTART_IQOPTION.md)** - Início rápido (5 minutos)
+- **[IQOPTION_SETUP.md](./IQOPTION_SETUP.md)** - Guia completo de instalação
+- **[IMPLEMENTACAO_IQOPTION.md](./IMPLEMENTACAO_IQOPTION.md)** - Detalhes da implementação
+- **[ARQUITETURA_IQOPTION.md](./ARQUITETURA_IQOPTION.md)** - Arquitetura técnica
+
+### Outros
 - **[SETUP.md](./SETUP.md)** - Setup geral do repositório
 
 ---
