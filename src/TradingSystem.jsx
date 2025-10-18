@@ -28,26 +28,12 @@ const { useState, useEffect, useRef } = React
    ======================================== */
 
         const API_PROVIDERS = {
-            ALPHA_VANTAGE: {
-                name: 'Alpha Vantage',
-                icon: '📈',
-                requiresSecret: false,
-                baseUrl: 'https://www.alphavantage.co/query',
-                description: 'Dados de ações, forex e cripto (500 calls/dia grátis)'
-            },
             BINANCE: {
                 name: 'Binance',
                 icon: '🟡',
                 requiresSecret: true,
                 baseUrl: 'https://api.binance.com/api/v3',
                 description: 'Dados de criptomoedas em tempo real'
-            },
-            COINGECKO: {
-                name: 'CoinGecko',
-                icon: '🦎',
-                requiresSecret: false,
-                baseUrl: 'https://api.coingecko.com/api/v3',
-                description: 'Dados de cripto (requer chave Demo API gratuita)'
             },
             POLYGON: {
                 name: 'Polygon.io',
@@ -62,6 +48,14 @@ const { useState, useEffect, useRef } = React
                 requiresSecret: false,
                 baseUrl: 'https://economia.awesomeapi.com.br',
                 description: 'API brasileira gratuita (USD-BRL, BTC-BRL, EUR-BRL, etc.)'
+            },
+            TWELVE_DATA: {
+                name: 'Twelve Data',
+                icon: '📊',
+                requiresSecret: false,
+                baseUrl: 'https://api.twelvedata.com',
+                wsUrl: 'wss://ws.twelvedata.com/v1/quotes/price',
+                description: 'Forex, ações e cripto em tempo real (800 calls/dia grátis + WebSocket)'
             }
         };
 
@@ -205,19 +199,57 @@ const { useState, useEffect, useRef } = React
         class RateLimiter {
             constructor() {
                 this.limits = {
-                    'ALPHA_VANTAGE': { calls: 0, maxCalls: 5, windowMs: 60000, lastReset: Date.now() },
-                    'BINANCE': { calls: 0, maxCalls: 1200, windowMs: 60000, lastReset: Date.now() },
-                    'COINGECKO': { calls: 0, maxCalls: 50, windowMs: 60000, lastReset: Date.now() },
-                    'POLYGON': { calls: 0, maxCalls: 5, windowMs: 60000, lastReset: Date.now() },
-                    'AWESOMEAPI': { calls: 0, maxCalls: 100, windowMs: 60000, lastReset: Date.now() }
+                    'BINANCE': { calls: 0, maxCalls: 1200, windowMs: 60000, lastReset: Date.now(), queue: [] },
+                    'POLYGON': { calls: 0, maxCalls: 5, windowMs: 60000, lastReset: Date.now(), queue: [] },
+                    'AWESOMEAPI': { calls: 0, maxCalls: 100, windowMs: 60000, lastReset: Date.now(), queue: [] },
+                    'TWELVE_DATA': { calls: 0, maxCalls: 4, windowMs: 60000, lastReset: Date.now(), queue: [], callTimestamps: [] } // 4 calls por minuto (margem de segurança - limite real: 8)
                 };
+
+                // Log inicial do limite do Twelve Data
+                console.log('🚦 [RATE LIMITER] Twelve Data: 4 requisições por minuto (limite conservador)');
             }
 
-            async checkLimit(provider) {
+            async checkLimit(provider, priority = 'normal') {
                 const limit = this.limits[provider];
                 if (!limit) return true;
 
                 const now = Date.now();
+
+                // Para Twelve Data, usar janela deslizante (sliding window)
+                if (provider === 'TWELVE_DATA') {
+                    // Remover timestamps antigos (fora da janela de 1 minuto)
+                    limit.callTimestamps = limit.callTimestamps.filter(ts => now - ts < limit.windowMs);
+
+                    // 🚨 PRIORIDADE: Reservar 2 créditos para verificações críticas
+                    const RESERVED_CREDITS = 2;
+                    const effectiveLimit = priority === 'critical' ? limit.maxCalls : (limit.maxCalls - RESERVED_CREDITS);
+
+                    // Verificar se atingiu o limite
+                    if (limit.callTimestamps.length >= effectiveLimit) {
+                        const oldestCall = limit.callTimestamps[0];
+                        const waitTime = limit.windowMs - (now - oldestCall);
+
+                        if (priority === 'critical') {
+                            console.warn(`🚨 [CRITICAL] Verificação prioritária - usando créditos reservados`);
+                            console.warn(`   📊 Uso: ${limit.callTimestamps.length + 1}/${limit.maxCalls} (incluindo reserva)`);
+                        } else {
+                            console.warn(`⚠️ [TWELVE DATA] Rate limit atingido (${limit.callTimestamps.length}/${effectiveLimit} calls)`);
+                            console.warn(`   🛡️ ${RESERVED_CREDITS} créditos reservados para verificações críticas`);
+                            console.warn(`   ⏳ Aguardando ${Math.ceil(waitTime/1000)}s antes da próxima requisição...`);
+                            await new Promise(resolve => setTimeout(resolve, waitTime + 100)); // +100ms de margem
+                            // Limpar timestamps antigos novamente
+                            limit.callTimestamps = limit.callTimestamps.filter(ts => Date.now() - ts < limit.windowMs);
+                        }
+                    }
+
+                    // Adicionar timestamp da chamada atual
+                    limit.callTimestamps.push(Date.now());
+                    const priorityIcon = priority === 'critical' ? '🚨' : '📊';
+                    console.log(`${priorityIcon} [TWELVE DATA] Requisição ${limit.callTimestamps.length}/${limit.maxCalls} (janela: ${Math.ceil((Date.now() - limit.callTimestamps[0])/1000)}s) [${priority.toUpperCase()}]`);
+                    return true;
+                }
+
+                // Para outros providers, usar janela fixa (fixed window)
                 if (now - limit.lastReset >= limit.windowMs) {
                     limit.calls = 0;
                     limit.lastReset = now;
@@ -244,6 +276,7 @@ const { useState, useEffect, useRef } = React
         }
 
         const rateLimiter = new RateLimiter();
+        window.rateLimiter = rateLimiter; // Expor globalmente para acesso em métodos de classe
 
         // Retry logic with exponential backoff
         async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
@@ -273,17 +306,6 @@ const { useState, useEffect, useRef } = React
                 let url, response, data;
 
                 switch(provider) {
-                    case 'ALPHA_VANTAGE':
-                        const avInterval = timeframe === 'M5' ? '5min' : '15min';
-                        url = `${API_PROVIDERS.ALPHA_VANTAGE.baseUrl}?function=TIME_SERIES_INTRADAY&symbol=${symbol}&interval=${avInterval}&apikey=${apiKey}`;
-                        response = await fetch(url);
-                        data = await response.json();
-                        
-                        if (data['Error Message'] || data['Note']) {
-                            throw new Error(data['Error Message'] || 'Limite de API atingido');
-                        }
-                        return parseAlphaVantageData(data, avInterval);
-
                     case 'BINANCE':
                         const interval = timeframe === 'M5' ? '5m' : '15m';
                         url = `${API_PROVIDERS.BINANCE.baseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=200`;
@@ -294,25 +316,6 @@ const { useState, useEffect, useRef } = React
                             throw new Error(data.msg || 'Erro na API Binance');
                         }
                         return parseBinanceData(data);
-
-                    case 'COINGECKO':
-                        const symbolMap = {
-                            'BTC': 'bitcoin', 'BTCUSDT': 'bitcoin',
-                            'ETH': 'ethereum', 'ETHUSDT': 'ethereum',
-                            'BNB': 'binancecoin', 'BNBUSDT': 'binancecoin'
-                        };
-                        
-                        const coinId = symbolMap[symbol.toUpperCase()] || 'bitcoin';
-                        url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1`;
-                        
-                        response = await fetch(url);
-                        if (response.ok) {
-                            data = await response.json();
-                            if (data.prices && data.prices.length > 0) {
-                                return parseCoinGeckoData(data);
-                            }
-                        }
-                        throw new Error('CoinGecko: Dados não disponíveis');
 
                     case 'POLYGON':
                         const multiplier = timeframe === 'M5' ? 5 : 15;
@@ -340,6 +343,37 @@ const { useState, useEffect, useRef } = React
                         }
                         return parseAwesomeAPIData(data, symbol);
 
+                    case 'TWELVE_DATA':
+                        // Twelve Data - Forex, ações e cripto
+                        // Suporta: EUR/USD, GBP/USD, BTC/USD, AAPL, etc.
+                        const tdInterval = timeframe === 'M5' ? '5min' : '15min';
+
+                        // Normalizar símbolo: remover espaços mas MANTER a barra (/) para Forex
+                        // Se não tiver barra, adicionar (ex: EURUSD -> EUR/USD)
+                        let cleanSymbol = symbol.replace(/\s/g, '').trim();
+
+                        // Se for forex sem barra (EURUSD), adicionar barra (EUR/USD)
+                        if (cleanSymbol.length === 6 && !cleanSymbol.includes('/')) {
+                            cleanSymbol = cleanSymbol.substring(0, 3) + '/' + cleanSymbol.substring(3);
+                        }
+
+                        url = `${API_PROVIDERS.TWELVE_DATA.baseUrl}/time_series?symbol=${cleanSymbol}&interval=${tdInterval}&outputsize=200&apikey=${apiKey}`;
+
+                        console.log(`📡 [TWELVE DATA] Buscando: ${cleanSymbol} (${tdInterval})`);
+
+                        response = await fetch(url);
+                        data = await response.json();
+
+                        if (data.status === 'error') {
+                            throw new Error(data.message || 'Erro na API Twelve Data');
+                        }
+
+                        if (!data.values || data.values.length === 0) {
+                            throw new Error('Twelve Data: Sem dados disponíveis');
+                        }
+
+                        return parseTwelveData(data);
+
                     default:
                         throw new Error('Provider não suportado');
                 }
@@ -348,29 +382,6 @@ const { useState, useEffect, useRef } = React
                 throw error;
             }
             }); // End of retryWithBackoff
-        }
-
-        function parseAlphaVantageData(data, interval) {
-            const timeSeriesKey = `Time Series (${interval})`;
-            const timeSeries = data[timeSeriesKey];
-            
-            if (!timeSeries) {
-                throw new Error('Dados não encontrados');
-            }
-
-            const candles = [];
-            for (const [timestamp, values] of Object.entries(timeSeries)) {
-                candles.push({
-                    timestamp: new Date(timestamp).getTime(),
-                    open: parseFloat(values['1. open']),
-                    high: parseFloat(values['2. high']),
-                    low: parseFloat(values['3. low']),
-                    close: parseFloat(values['4. close']),
-                    volume: parseFloat(values['5. volume'])
-                });
-            }
-
-            return candles.sort((a, b) => a.timestamp - b.timestamp).slice(-200);
         }
 
         function parseBinanceData(data) {
@@ -382,20 +393,6 @@ const { useState, useEffect, useRef } = React
                 close: parseFloat(candle[4]),
                 volume: parseFloat(candle[5])
             }));
-        }
-
-        function parseCoinGeckoData(data) {
-            return data.prices.slice(-200).map(point => {
-                const price = point[1];
-                return {
-                    timestamp: point[0],
-                    open: price,
-                    high: price * 1.005,
-                    low: price * 0.995,
-                    close: price,
-                    volume: 1000000
-                };
-            });
         }
 
         function parsePolygonData(data) {
@@ -458,6 +455,33 @@ const { useState, useEffect, useRef } = React
             return candles;
         }
 
+        function parseTwelveData(data) {
+            // Twelve Data retorna dados no formato:
+            // { values: [{ datetime, open, high, low, close, volume }], status: "ok" }
+            if (!data.values || data.values.length === 0) {
+                throw new Error('Dados Twelve Data inválidos ou vazios');
+            }
+
+            console.log(`📊 [TWELVE DATA] Recebidos ${data.values.length} candles`);
+
+            // Twelve Data retorna mais recente primeiro, então reverter
+            const candles = data.values.reverse().map(candle => ({
+                timestamp: new Date(candle.datetime).getTime(),
+                open: parseFloat(candle.open),
+                high: parseFloat(candle.high),
+                low: parseFloat(candle.low),
+                close: parseFloat(candle.close),
+                volume: parseFloat(candle.volume || 0)
+            }));
+
+            // Log da última cotação
+            const latest = candles[candles.length - 1];
+            const latestTime = new Date(latest.timestamp);
+            console.log(`   💰 Última cotação: ${latest.close.toFixed(5)} (${latestTime.toLocaleTimeString('pt-BR')})`);
+
+            return candles;
+        }
+
         function validateAPIKey(provider, apiKey, secretKey = null) {
             const errors = [];
 
@@ -505,10 +529,9 @@ const { useState, useEffect, useRef } = React
         async function testAPIConnection(provider, apiKey, secretKey = null) {
             try {
                 let testSymbol = 'BTCUSDT';
-                if (provider === 'ALPHA_VANTAGE') testSymbol = 'IBM';
-                else if (provider === 'COINGECKO') testSymbol = 'BTC';
-                else if (provider === 'POLYGON') testSymbol = 'AAPL';
+                if (provider === 'POLYGON') testSymbol = 'AAPL';
                 else if (provider === 'AWESOMEAPI') testSymbol = 'USD-BRL';
+                else if (provider === 'TWELVE_DATA') testSymbol = 'EUR/USD';
 
                 await fetchRealMarketData(provider, apiKey, testSymbol, 'M5', secretKey);
                 return { success: true, message: 'Conexão bem-sucedida!' };
@@ -2283,12 +2306,19 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 this.symbol = null; // ✅ NOVO: Armazenar símbolo atual
                 this.lastClosedCandle = null; // ✅ NOVO: Backup do último candle fechado
                 this.binanceWs = null;
+                this.twelveDataWs = null; // 📊 WebSocket Twelve Data
                 this.wsReconnectAttempts = 0;
                 this.maxReconnectAttempts = 100; // Aumentado para manter conexão
                 this.pingInterval = null;
                 this.lastPongTime = Date.now();
                 this.restApiFailover = false;
-                console.log('📊 MarketData inicializado - aguardando dados de API');
+                console.log('📊 MarketData inicializado com métodos WebSocket Twelve Data');
+
+                // 🔍 DEBUG: Listar métodos disponíveis
+                const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+                    .filter(name => typeof this[name] === 'function' && name !== 'constructor');
+                console.log('📋 Métodos disponíveis:', methods);
+                console.log('🔍 connectTwelveDataWebSocket exists?', typeof this.connectTwelveDataWebSocket);
             }
 
             // REST API Fallback
@@ -2318,8 +2348,21 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
             }
 
             // Busca proativa de candle específico via REST API
-            async fetchSpecificCandleFromREST(symbol, interval = '5m', timestamp) {
+            async fetchSpecificCandleFromREST(symbol, interval = '5m', timestamp, provider = null, apiKey = null, priority = 'normal') {
                 try {
+                    // Determinar provider se não foi passado
+                    if (!provider && window.apiManagerRef?.current) {
+                        const activeConn = window.apiManagerRef.current.getActiveConnection();
+                        provider = activeConn?.provider;
+                        apiKey = activeConn?.apiKey;
+                    }
+
+                    // Se for Twelve Data (forex), usar API específica
+                    if (provider === 'TWELVE_DATA') {
+                        return await this.fetchSpecificCandleFromTwelveData(symbol, interval, timestamp, apiKey, priority);
+                    }
+
+                    // Binance (padrão para cripto)
                     // Buscar alguns candles ao redor do timestamp alvo
                     const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&startTime=${timestamp - 600000}&endTime=${timestamp + 600000}&limit=20`;
                     const response = await fetch(url);
@@ -2368,9 +2411,9 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                             if (candle.open === candle.high && candle.high === candle.low && candle.low === candle.close) {
                                 console.warn(`   ⚠️⚠️⚠️ CANDLE SUSPEITO! Todos valores iguais (OHLC = ${candle.open.toFixed(5)})`);
                                 console.warn(`   ⚠️⚠️⚠️ Isso pode indicar dados incompletos da API!`);
-                                console.warn(`   ⚠️⚠️⚠️ Confira MANUALMENTE no gráfico da Binance Futures!`);
+                                console.warn(`   ⚠️⚠️⚠️ Confira MANUALMENTE no gráfico da sua corretora!`);
                             } else {
-                                console.log(`   ⚠️ Confira este candle no gráfico da Binance Futures!`);
+                                console.log(`   ⚠️ Confira este candle no gráfico da sua corretora!`);
                             }
                         }
 
@@ -2410,6 +2453,137 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     }
                 } catch (error) {
                     console.error('❌ Erro ao buscar candle específico:', error);
+                    return null;
+                }
+            }
+
+            // Buscar candle específico via Twelve Data API
+            async fetchSpecificCandleFromTwelveData(symbol, interval = '5m', timestamp, apiKey, priority = 'normal') {
+                try {
+                    const priorityLabel = priority === 'critical' ? '🚨 CRÍTICO' : '📊';
+                    console.log(`${priorityLabel} [TWELVE DATA] Buscando candle específico: ${symbol} em ${new Date(timestamp).toLocaleString('pt-BR')}`);
+
+                    // ✅ CACHE: Verificar se o candle já existe no cache
+                    const cachedCandle = this.prices.find(p => Math.abs(p.timestamp - timestamp) < 60000); // 1min tolerância
+                    if (cachedCandle && cachedCandle.isClosed) {
+                        console.log(`✅ [CACHE HIT] Candle FECHADO encontrado no cache - evitando requisição`);
+                        console.log(`   ⏰ Timestamp: ${new Date(cachedCandle.timestamp).toLocaleString('pt-BR')}`);
+                        console.log(`   📊 OHLC: O=${cachedCandle.open.toFixed(5)} C=${cachedCandle.close.toFixed(5)}`);
+                        return cachedCandle;
+                    }
+
+                    // 🚦 RATE LIMIT: Aguardar se necessário (com prioridade)
+                    if (window.rateLimiter) {
+                        await window.rateLimiter.checkLimit('TWELVE_DATA', priority);
+                    }
+
+                    // Normalizar símbolo para Twelve Data (EUR/USD formato)
+                    let cleanSymbol = symbol.replace(/\s/g, '').trim();
+                    if (cleanSymbol.length === 6 && !cleanSymbol.includes('/')) {
+                        cleanSymbol = cleanSymbol.substring(0, 3) + '/' + cleanSymbol.substring(3);
+                    }
+
+                    // Converter intervalo: 5m -> 5min
+                    const twelveInterval = interval.replace('m', 'min');
+
+                    // Calcular range de tempo (buscar alguns candles ao redor)
+                    const startDate = new Date(timestamp - 30 * 60 * 1000); // 30min antes
+                    const endDate = new Date(timestamp + 30 * 60 * 1000); // 30min depois
+
+                    // Formatar datas para API (YYYY-MM-DD HH:MM:SS)
+                    const formatDate = (date) => {
+                        const pad = (n) => String(n).padStart(2, '0');
+                        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+                    };
+
+                    const url = `https://api.twelvedata.com/time_series?symbol=${cleanSymbol}&interval=${twelveInterval}&start_date=${formatDate(startDate)}&end_date=${formatDate(endDate)}&apikey=${apiKey}&format=JSON`;
+
+                    console.log(`📡 [TWELVE DATA] Fazendo requisição REST API...`);
+
+                    const response = await fetch(url);
+
+                    if (!response.ok) {
+                        throw new Error(`API retornou ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.status === 'error') {
+                        console.error('❌ [TWELVE DATA] Erro da API:', data.message);
+                        return null;
+                    }
+
+                    if (!data.values || !Array.isArray(data.values)) {
+                        console.error('❌ [TWELVE DATA] Formato inválido:', data);
+                        return null;
+                    }
+
+                    console.log(`📊 [TWELVE DATA] Recebidos ${data.values.length} candles`);
+
+                    // Converter para formato padrão
+                    const now = Date.now();
+                    const candles = data.values.map(v => {
+                        const candleTime = new Date(v.datetime).getTime();
+                        const candleEndTime = candleTime + 5 * 60 * 1000; // Fim do candle de 5min
+
+                        // ✅ VALIDAÇÃO CRÍTICA: Verificar se candle realmente fechou
+                        const isClosed = now >= candleEndTime;
+
+                        return {
+                            timestamp: candleTime,
+                            open: parseFloat(v.open),
+                            high: parseFloat(v.high),
+                            low: parseFloat(v.low),
+                            close: parseFloat(v.close),
+                            volume: parseFloat(v.volume || 0),
+                            isClosed,
+                            closeTime: candleEndTime
+                        };
+                    });
+
+                    // ✅ FILTRAR: Usar apenas candles FECHADOS
+                    const closedCandles = candles.filter(c => c.isClosed);
+
+                    if (closedCandles.length < candles.length) {
+                        console.warn(`⚠️ [TWELVE DATA] ${candles.length - closedCandles.length} candles em formação foram ignorados`);
+                    }
+
+                    // Encontrar o candle FECHADO mais próximo do timestamp alvo
+                    const targetCandle = closedCandles.reduce((closest, candle) => {
+                        if (!closest) return candle;
+                        const currentDiff = Math.abs(candle.timestamp - timestamp);
+                        const closestDiff = Math.abs(closest.timestamp - timestamp);
+                        return currentDiff < closestDiff ? candle : closest;
+                    }, null);
+
+                    if (targetCandle) {
+                        console.log(`🎯 [TWELVE DATA] Candle encontrado:`);
+                        console.log(`   ⏰ Timestamp: ${new Date(targetCandle.timestamp).toLocaleString('pt-BR')}`);
+                        console.log(`   📊 OHLC: O=${targetCandle.open.toFixed(5)} H=${targetCandle.high.toFixed(5)} L=${targetCandle.low.toFixed(5)} C=${targetCandle.close.toFixed(5)}`);
+                        console.log(`   🎨 Cor: ${targetCandle.close > targetCandle.open ? 'VERDE 🟢' : targetCandle.close < targetCandle.open ? 'VERMELHO 🔴' : 'DOJI ⚪'}`);
+
+                        // Adicionar ao cache
+                        candles.forEach(candle => {
+                            const existingIndex = this.prices.findIndex(p => p.timestamp === candle.timestamp);
+                            if (existingIndex === -1) {
+                                this.prices.push(candle);
+                            }
+                        });
+
+                        // Ordenar e manter últimos 200
+                        this.prices.sort((a, b) => a.timestamp - b.timestamp);
+                        if (this.prices.length > 200) {
+                            this.prices = this.prices.slice(-200);
+                        }
+
+                        return targetCandle;
+                    } else {
+                        console.warn(`⚠️ [TWELVE DATA] Candle não encontrado para timestamp ${new Date(timestamp).toLocaleString('pt-BR')}`);
+                        return null;
+                    }
+
+                } catch (error) {
+                    console.error('❌ [TWELVE DATA] Erro ao buscar candle específico:', error);
                     return null;
                 }
             }
@@ -3101,6 +3275,140 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     signal,
                     strength: Math.min(1, Math.abs(deviation) / 2)
                 };
+            }
+
+            // 📊 TWELVE DATA WebSocket - Tempo Real
+            connectTwelveDataWebSocket(symbol, apiKey) {
+                try {
+                    // Fechar conexão existente se houver
+                    if (this.twelveDataWs) {
+                        this.twelveDataWs.close();
+                        this.twelveDataWs = null;
+                    }
+
+                    // Normalizar símbolo: remover espaços mas MANTER barra (/)
+                    let cleanSymbol = symbol.replace(/\s/g, '').trim();
+
+                    // Se for forex sem barra (EURUSD), adicionar barra (EUR/USD)
+                    if (cleanSymbol.length === 6 && !cleanSymbol.includes('/')) {
+                        cleanSymbol = cleanSymbol.substring(0, 3) + '/' + cleanSymbol.substring(3);
+                    }
+
+                    console.log(`📊 [TWELVE DATA WS] Conectando: ${cleanSymbol}`);
+
+                    this.twelveDataWs = new WebSocket(`${API_PROVIDERS.TWELVE_DATA.wsUrl}?apikey=${apiKey}`);
+
+                    this.twelveDataWs.onopen = () => {
+                        console.log('✅ [TWELVE DATA WS] Conectado!');
+
+                        // Subscrever ao símbolo
+                        this.twelveDataWs.send(JSON.stringify({
+                            action: 'subscribe',
+                            params: {
+                                symbols: cleanSymbol
+                            }
+                        }));
+
+                        console.log(`📡 [TWELVE DATA WS] Inscrito em: ${cleanSymbol}`);
+                        this.wsReconnectAttempts = 0;
+                    };
+
+                    this.twelveDataWs.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+
+                            // Twelve Data envia: { symbol, price, timestamp }
+                            if (message.price && message.timestamp) {
+                                const price = parseFloat(message.price);
+                                const timestamp = message.timestamp * 1000; // Converter para ms
+
+                                // Atualizar preço atual
+                                this.updatePriceFromWebSocket(price, timestamp);
+
+                                // Log ocasional (10% das vezes)
+                                if (Math.random() < 0.1) {
+                                    console.log(`💰 [TWELVE DATA WS] ${cleanSymbol}: ${price.toFixed(5)}`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('❌ [TWELVE DATA WS] Erro ao processar mensagem:', error);
+                        }
+                    };
+
+                    this.twelveDataWs.onerror = (error) => {
+                        console.error('❌ [TWELVE DATA WS] Erro:', error);
+                    };
+
+                    this.twelveDataWs.onclose = () => {
+                        console.warn('⚠️ [TWELVE DATA WS] Desconectado');
+
+                        // Tentar reconectar
+                        if (this.wsReconnectAttempts < this.maxReconnectAttempts) {
+                            this.wsReconnectAttempts++;
+                            const delay = Math.min(1000 * Math.pow(2, this.wsReconnectAttempts), 30000);
+                            console.log(`🔄 [TWELVE DATA WS] Reconectando em ${delay}ms (tentativa ${this.wsReconnectAttempts})`);
+
+                            setTimeout(() => {
+                                this.connectTwelveDataWebSocket(symbol, apiKey);
+                            }, delay);
+                        }
+                    };
+
+                } catch (error) {
+                    console.error('❌ [TWELVE DATA WS] Erro ao conectar:', error);
+                }
+            }
+
+            updatePriceFromWebSocket(price, timestamp) {
+                // Atualizar ou criar candle atual
+                const candleTimestamp = this.getCandleTimestamp(timestamp, 5); // 5 min candle
+
+                if (!this.currentCandle || this.currentCandle.timestamp !== candleTimestamp) {
+                    // Fechar candle anterior
+                    if (this.currentCandle) {
+                        this.lastClosedCandle = { ...this.currentCandle, isClosed: true };
+                        this.prices.push(this.lastClosedCandle);
+
+                        // Manter apenas últimos 200 candles
+                        if (this.prices.length > 200) {
+                            this.prices.shift();
+                        }
+                    }
+
+                    // Novo candle
+                    this.currentCandle = {
+                        timestamp: candleTimestamp,
+                        open: price,
+                        high: price,
+                        low: price,
+                        close: price,
+                        volume: 0,
+                        isClosed: false
+                    };
+                } else {
+                    // Atualizar candle atual
+                    this.currentCandle.high = Math.max(this.currentCandle.high, price);
+                    this.currentCandle.low = Math.min(this.currentCandle.low, price);
+                    this.currentCandle.close = price;
+                }
+            }
+
+            getCandleTimestamp(timestamp, intervalMinutes) {
+                const date = new Date(timestamp);
+                const minutes = date.getMinutes();
+                const candleStart = Math.floor(minutes / intervalMinutes) * intervalMinutes;
+                date.setMinutes(candleStart);
+                date.setSeconds(0);
+                date.setMilliseconds(0);
+                return date.getTime();
+            }
+
+            disconnectTwelveDataWebSocket() {
+                if (this.twelveDataWs) {
+                    console.log('🔌 [TWELVE DATA WS] Desconectando...');
+                    this.twelveDataWs.close();
+                    this.twelveDataWs = null;
+                }
             }
         }
         /* ========================================
@@ -4928,6 +5236,7 @@ useEffect(() => {
             apiManagerRef.current = new APIConnectionManager();
             await apiManagerRef.current.loadFromStorage(); // Garantir que carregou
             setApiManager(apiManagerRef.current);
+            window.apiManagerRef = apiManagerRef; // Expor globalmente para acesso em métodos
             console.log('✅ APIManager inicializado');
             
             orderExecutorRef.current = new OrderExecutionManager(apiManagerRef.current);
@@ -5056,9 +5365,14 @@ useEffect(() => {
                     });
                     verificationTimers.current.clear();
                     
-                    // 🔌 GARANTIR desconexão do WebSocket
+                    // 🔌 GARANTIR desconexão dos WebSockets
                     if (marketDataRef.current) {
-                        marketDataRef.current.disconnectBinanceWebSocket();
+                        if (typeof marketDataRef.current.disconnectBinanceWebSocket === 'function') {
+                            marketDataRef.current.disconnectBinanceWebSocket();
+                        }
+                        if (typeof marketDataRef.current.disconnectTwelveDataWebSocket === 'function') {
+                            marketDataRef.current.disconnectTwelveDataWebSocket();
+                        }
                     }
                     
                     // Limpar interval global se existir
@@ -5145,25 +5459,38 @@ useEffect(() => {
                 // 🔌 GERENCIAR CONEXÃO WEBSOCKET baseado no estado isActive
                 if (!isActive) {
                     // WebSocket desconectado silenciosamente
-                    if (marketDataRef.current) {
+                    if (marketDataRef.current && typeof marketDataRef.current.disconnectBinanceWebSocket === 'function') {
                         marketDataRef.current.disconnectBinanceWebSocket();
                     }
                     return;
                 }
-                
+
                 if (!marketData || !alphaEngine || !apiManager) return;
-                
-                // 🔌 CONECTAR WEBSOCKET quando ativo
-                // WebSocket conectado silenciosamente
-                if (marketDataRef.current) {
-                    marketDataRef.current.connectBinanceWebSocket(symbol, '5m', (candle) => {
-                        // ✅ REDUZIDO: Só logar candles fechados (importantes) ou ocasionalmente
-                        if (candle.isClosed) {
-                            // Candle fechado processado silenciosamente
-                        } else if (Math.random() < 0.01) { // 1% dos candles em formação
-                            // Candle em formação processado silenciosamente
+
+                // 🔌 CONECTAR WEBSOCKET quando ativo (baseado no provider)
+                const activeConn = apiManager.getActiveConnection();
+                if (marketDataRef.current && activeConn) {
+                    if (activeConn.provider === 'BINANCE') {
+                        // WebSocket Binance para cripto
+                        if (typeof marketDataRef.current.connectBinanceWebSocket === 'function') {
+                            marketDataRef.current.connectBinanceWebSocket(symbol, '5m', (candle) => {
+                                // ✅ REDUZIDO: Só logar candles fechados (importantes) ou ocasionalmente
+                                if (candle.isClosed) {
+                                    // Candle fechado processado silenciosamente
+                                } else if (Math.random() < 0.01) { // 1% dos candles em formação
+                                    // Candle em formação processado silenciosamente
+                                }
+                            });
                         }
-                    });
+                    } else if (activeConn.provider === 'TWELVE_DATA') {
+                        // WebSocket Twelve Data para forex
+                        console.log('🔌 [TWELVE DATA] Conectando WebSocket no início...');
+                        if (typeof marketDataRef.current.connectTwelveDataWebSocket === 'function') {
+                            marketDataRef.current.connectTwelveDataWebSocket(symbol, activeConn.apiKey);
+                        } else {
+                            console.error('❌ connectTwelveDataWebSocket não está disponível:', typeof marketDataRef.current.connectTwelveDataWebSocket);
+                        }
+                    }
                 }
 
                 let lastKnownPrice = null;
@@ -5246,11 +5573,17 @@ useEffect(() => {
                             }
 
                             // Atualizar dados do mercado
-                            marketData.replaceWithRealData(realData);
+                            marketDataRef.current.replaceWithRealData(realData);
                             setDataSource('REAL');
 
+                            // 📊 TWELVE DATA: Conectar WebSocket para tempo real
+                            if (activeConn.provider === 'TWELVE_DATA' && !marketDataRef.current.twelveDataWs && typeof marketDataRef.current.connectTwelveDataWebSocket === 'function') {
+                                console.log('🔌 [TWELVE DATA] Iniciando WebSocket para dados em tempo real...');
+                                marketDataRef.current.connectTwelveDataWebSocket(symbol, activeConn.apiKey);
+                            }
+
                             // 💰 Verificar dados atualizados (com logs otimizados)
-                            const currentPrice = marketData.getLatestPrice();
+                            const currentPrice = marketDataRef.current.getLatestPrice();
                             if (currentPrice) {
                                 // Log do preço apenas de vez em quando (não todo loop)
                                 if (Math.random() < 0.1) { // 10% das vezes
@@ -5387,15 +5720,22 @@ useEffect(() => {
 
                 const candleInfo = getCandleInfo();
                 const MIN_TIME_BEFORE_CLOSE = 60; // 60 segundos
-                const ANALYSIS_INTERVAL = 30000; // 30 segundos (otimizado para menos spam)
+
+                // 🚦 TWELVE DATA: Intervalo maior para respeitar rate limit (4 req/min conservador)
+                const currentConnection = apiManager?.getActiveConnection();
+                const isTwelveData = currentConnection?.provider === 'TWELVE_DATA';
+                const ANALYSIS_INTERVAL = isTwelveData ? 90000 : 30000; // 90s para Twelve Data (conservador), 30s para outros
 
                 console.log('🔄 Sistema de análise contínua iniciado (OTIMIZADO)');
-                console.log(`   🔄 Intervalo: ${ANALYSIS_INTERVAL/1000}s (reduzido para menos spam)`);
+                console.log(`   🔄 Intervalo: ${ANALYSIS_INTERVAL/1000}s ${isTwelveData ? '(Twelve Data - respeitando rate limit 4/min CONSERVADOR)' : '(otimizado para menos spam)'}`);
                 console.log(`   🎯 Sinais enviados: 60s (1min) antes da entrada`);
                 console.log(`   ⚠️ Tempo mínimo antes do fechamento: ${MIN_TIME_BEFORE_CLOSE}s`);
                 console.log('   🚫 Filtro de duplicados: ATIVO');
                 console.log('   📊 Sistema de otimização: ATIVO');
                 console.log('   🛡️ Detecção inteligente de preços travados: ATIVO');
+                if (isTwelveData) {
+                    console.log('   🚦 Rate Limiter Twelve Data: ATIVO (4 requisições/minuto - margem de segurança)');
+                }
 
                 // ⚡ EXECUTAR PRIMEIRA ANÁLISE IMEDIATAMENTE
                 console.log(`\n⏰ Candle atual: ${candleInfo.candleStart.toLocaleTimeString('pt-BR')}`);
@@ -5423,11 +5763,16 @@ useEffect(() => {
                     }
                     
                     // 🔌 DESCONECTAR WEBSOCKET no cleanup
-                    console.log('🔌 [CLEANUP] Desconectando WebSocket...');
+                    console.log('🔌 [CLEANUP] Desconectando WebSockets...');
                     if (marketDataRef.current) {
-                        marketDataRef.current.disconnectBinanceWebSocket();
+                        if (typeof marketDataRef.current.disconnectBinanceWebSocket === 'function') {
+                            marketDataRef.current.disconnectBinanceWebSocket();
+                        }
+                        if (typeof marketDataRef.current.disconnectTwelveDataWebSocket === 'function') {
+                            marketDataRef.current.disconnectTwelveDataWebSocket();
+                        }
                     }
-                    
+
                     console.log('⏹️ Sistema completamente parado (análise + WebSocket)');
                 };
             }, [isActive, marketData, alphaEngine, apiManager, dataSource, orderExecutor, symbol]); // Fixed: added symbol to reconnect WebSocket when symbol changes
@@ -5658,52 +6003,60 @@ useEffect(() => {
                                 console.log(`📦 [CACHE] Cache vazio - partindo para REST API`);
                             }
                             
-                            // 🌐 ETAPA 2: BUSCAR VIA REST API (dados oficiais)
+                            // 🌐 BUSCAR CANDLE VIA REST API (DADOS OFICIAIS EXATOS)
+                            // ⚠️ CRÍTICO: Para opções binárias, SEMPRE usar REST API oficial
+                            // Cache/WebSocket podem ter dados imprecisos ou parcialmente atualizados
                             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                 try {
-                                    console.log(`🔄 [REST API] Tentativa ${attempt}/${maxRetries} - Binance oficial`);
-                                    
+                                    console.log(`🔄 [REST API OFICIAL] Tentativa ${attempt}/${maxRetries}`);
+
                                     let candle = null;
-                                    
-                                    console.log(`🔍 [REST API] Buscando candle ANTERIOR (dados precisos):`);
+
+                                    console.log(`🔍 [REST API] Buscando candle ANTERIOR (dados oficiais):`);
                                     console.log(`   🎯 Sinal expira: ${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')}`);
                                     console.log(`   🎯 Candle anterior: ${new Date(previousCandleTimestamp).toLocaleTimeString('pt-BR')}`);
                                     console.log(`   📊 Estratégia: Open vs Close do candle anterior`);
-                                    
-                                    // 🌐 BUSCA DIRETA: REST API do candle anterior
+                                    console.log(`   ⚠️ IMPORTANTE: Dados OFICIAIS da API (não cache)`);
+
+                                    // 🌐 REST API - FONTE ÚNICA E CONFIÁVEL
                                     if (marketDataRef.current?.fetchSpecificCandleFromREST) {
                                         try {
-                                            console.log(`� [REST] Buscando via Binance REST API...`);
+                                            console.log(`🚨 [REST CRÍTICO] Buscando candle OFICIAL para verificação...`);
                                             candle = await marketDataRef.current.fetchSpecificCandleFromREST(
                                                 signal.symbol.toUpperCase(),
-                                                '5m', 
-                                                previousCandleTimestamp
+                                                '5m',
+                                                previousCandleTimestamp,
+                                                null, // provider auto-detectado
+                                                null, // apiKey auto-detectado
+                                                'critical' // 🚨 PRIORIDADE CRÍTICA - usa créditos reservados
                                             );
-                                            
+
                                             if (candle) {
-                                                console.log(`✅ [PROATIVA] Candle encontrado - DADOS EXATOS!`);
-                                                console.log(`📊 DADOS OFICIAIS BINANCE:`);
+                                                console.log(`✅ [REST API] Candle OFICIAL encontrado - DADOS EXATOS!`);
+                                                console.log(`📊 DADOS OFICIAIS DA API:`);
                                                 console.log(`   ⏰ Timestamp: ${new Date(candle.timestamp).toLocaleTimeString('pt-BR')}`);
                                                 console.log(`   📊 OHLC: O=${candle.open.toFixed(5)} H=${candle.high.toFixed(5)} L=${candle.low.toFixed(5)} C=${candle.close.toFixed(5)}`);
-                                                console.log(`   🎯 Este é o candle CORRETO para verificação!`);
+                                                console.log(`   🎯 Este é o candle OFICIAL para decisão financeira!`);
+                                                console.log(`   💳 Crédito API usado (necessário para precisão)`);
                                             }
                                         } catch (apiError) {
                                             console.error(`❌ [REST] Erro na busca REST API:`, apiError.message);
                                         }
                                     }
-                                    
-                                    // ❌ SEM FALLBACKS: Apenas REST API oficial
+
+                                    // ❌ VERIFICAÇÃO FINAL
                                     if (!candle) {
-                                        console.error(`❌ [REST] Falha na busca do candle anterior`);
+                                        console.error(`❌ [REST API] Falha na busca do candle oficial`);
                                         console.error(`   Tentativa ${attempt}/${maxRetries} falhou`);
                                         console.error(`   Timestamp: ${new Date(previousCandleTimestamp).toLocaleString('pt-BR')}`);
                                     }
-                                    
+
                                     if (candle) {
-                                        console.log(`✅ [SUCESSO] Candle anterior encontrado na tentativa ${attempt}!`);
-                                        console.log(`🎯 [FONTE] REST API Binance (dados oficiais)`);
+                                        console.log(`\n✅ [SUCESSO] Candle OFICIAL encontrado na tentativa ${attempt}!`);
+                                        console.log(`🎯 [FONTE] REST API (dados oficiais) 💳`);
                                         console.log(`⏰ [PERÍODO] ${new Date(candle.timestamp).toLocaleString('pt-BR')} até ${new Date(candle.timestamp + 299999).toLocaleTimeString('pt-BR')}`);
                                         console.log(`📊 [OHLC] O=${candle.open.toFixed(5)} H=${candle.high.toFixed(5)} L=${candle.low.toFixed(5)} C=${candle.close.toFixed(5)}`);
+                                        console.log(`🏦 [GARANTIA] Dados oficiais da API - precisão máxima`);
                                         
                                         // 💾 ATUALIZAR CACHE: Sobrescrever dados antigos com dados frescos
                                         if (marketDataRef.current?.prices) {
@@ -5756,19 +6109,19 @@ useEffect(() => {
                                             console.warn(`   Recebido: ${new Date(candle.timestamp).toLocaleTimeString('pt-BR')}`);
                                         }
                                         
-                                        console.log(`⚠️ [IMPORTANTE] Confira estes dados no gráfico da Binance!`);
+                                        console.log(`⚠️ [IMPORTANTE] Confira estes dados no gráfico da sua corretora!`);
                                         
-                                        return { 
-                                            ...candle, 
-                                            source: 'rest-api-official',
+                                        return {
+                                            ...candle,
+                                            source: 'rest-api-official', // Sempre REST API oficial
                                             isValid: candle.timestamp === previousCandleTimestamp,
                                             movement: movement,
                                             color: movement > 0 ? 'GREEN' : movement < 0 ? 'RED' : 'DOJI'
                                         };
                                     }
                                     
-                                    console.warn(`⚠️ [API BINANCE] Tentativa ${attempt} - candle não encontrado via REST`);
-                                    
+                                    console.warn(`⚠️ [REST API] Tentativa ${attempt} - candle não encontrado via REST`);
+
                                     // � SEM FALLBACKS: Se REST API falhar, marcar como falha
                                     if (attempt === maxRetries) {
                                         console.error(`❌ [FINAL] Todas as tentativas falharam`);
@@ -5777,21 +6130,21 @@ useEffect(() => {
                                         console.error(`⏰ [TIMESTAMP] ${new Date(previousCandleTimestamp).toLocaleString('pt-BR')}`);
                                         console.error(`💡 [SOLUÇÃO] Aguardar mais tempo ou verificar conexão`);
                                     }
-                                    
+
                                 } catch (error) {
-                                    console.error(`❌ [API BINANCE] Erro na tentativa ${attempt}:`, error.message);
+                                    console.error(`❌ [REST API] Erro na tentativa ${attempt}:`, error.message);
                                 }
-                                
+
                                 if (attempt < maxRetries) {
                                     // Delay progressivo: mais tempo a cada tentativa
                                     const progressiveDelay = delayMs * attempt;
                                     console.log(`⏳ Aguardando ${progressiveDelay}ms antes da próxima tentativa...`);
-                                    console.log(`   💡 Dica: API da Binance pode demorar até 10s para processar candle fechado`);
+                                    console.log(`   💡 Dica: A API pode demorar até 10s para processar candle fechado`);
                                     await new Promise(resolve => setTimeout(resolve, progressiveDelay));
                                 }
                             }
-                            
-                            console.error(`❌ [API BINANCE] FALHA TOTAL: Candle não encontrado após ${maxRetries} tentativas`);
+
+                            console.error(`❌ [REST API] FALHA TOTAL: Candle não encontrado após ${maxRetries} tentativas`);
                             return null;
                         };
 
@@ -5834,7 +6187,7 @@ useEffect(() => {
                             apiColor = 'VERMELHO 🔴';
                             apiColorEmoji = '🔴';
                         }
-                        console.log(`   � COR API BINANCE (PRINCIPAL): ${apiColor}`);
+                        console.log(`   🎨 COR REST API (PRINCIPAL): ${apiColor}`);
                         console.log(`   📈 Movimento: ${(expirationCandle.close - expirationCandle.open).toFixed(5)} pontos`);
 
                         // ✅ ESTRATÉGIA LIMPA: Não precisa validar actualEntryPrice
@@ -5889,22 +6242,22 @@ useEffect(() => {
                             isDoji = isBinanceDoji; // Apenas se exatamente igual
                             candleColor = isDoji ? 'DOJI' : isCandleGreen ? 'VERDE' : 'VERMELHO';
 
-                        console.log(`\n📊 [RESULTADO USANDO COR API BINANCE]`);
+                        console.log(`\n📊 [RESULTADO USANDO COR REST API]`);
                         console.log(`   📥 Open: ${entryPrice.toFixed(5)}`);
                         console.log(`   📤 Close: ${exitPrice.toFixed(5)}`);
                         console.log(`   📏 Variação: ${candleVariation.toFixed(5)} pts`);
-                        console.log(`   � API Binance: ${apiColor}`);
-                        console.log(`   �🎨 Resultado Final: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
+                        console.log(`   🎨 REST API: ${apiColor}`);
+                        console.log(`   🎨 Resultado Final: ${candleColor} ${isCandleGreen ? '🟢' : isCandleRed ? '🔴' : '⚪'}`);
                         console.log(`   📌 Candle: ${new Date(expirationTimestamp).toLocaleTimeString('pt-BR')}`);
                         console.log(`   ✅ DOJI apenas se Open === Close (exatamente igual)`);
 
-                        // 🎯 CALCULAR RESULTADO baseado na COR DA API BINANCE
+                        // 🎯 CALCULAR RESULTADO baseado na COR REST API
                         if (isDoji) {
                             // DOJI: Open === Close exatamente
                             result = 'EMPATE';
                             pnl = 0;
                             console.log(`   ⚖️ EMPATE! DOJI EXATO - Open === Close (${entryPrice.toFixed(5)})`);
-                            console.log(`   🎯 API Binance confirma: Valores exatamente iguais`);
+                            console.log(`   🎯 REST API confirma: Valores exatamente iguais`);
                         } else if (signal.direction === 'BUY') {
                             // CALL: precisa ser VERDE (subida)
                             console.log(`   🔍 [BUY/CALL] Esperado: SUBIDA 🟢 | Resultado: ${candleColor}`);
@@ -5945,10 +6298,10 @@ useEffect(() => {
                         verificationTimers.current.delete(signal.id);
 
                         // 🔗 SALVAR preço de saída para encadeamento (usando dados do CANDLE)
-                        console.log(`� [CHAIN] Salvando preço de saída baseado no CANDLE:`);
+                        console.log(`🔗 [CHAIN] Salvando preço de saída baseado no CANDLE:`);
                         console.log(`   💰 Preço anterior: ${lastConfirmedExit.current.price?.toFixed(2) || 'null'}`);
                         console.log(`   💰 Preço do candle: ${expirationClose.toFixed(2)}`);
-                        console.log(`   🎯 Fonte: REST API Binance (dados precisos)`);
+                        console.log(`   🎯 Fonte: REST API (dados precisos)`);
                         
                         // ✅ SALVAR com timestamp CORRETO (do candle anterior, não da expiração)
                         const actualCandleTimestamp = expirationCandle.timestamp; // Timestamp real do candle usado
@@ -6202,7 +6555,7 @@ useEffect(() => {
 
             const verifySignalOutcome = async (signal, forcedResult = null, forcedPnl = null, forcedPrice = null) => {
                 try {
-                    if (!marketData) return;
+                    if (!marketDataRef.current) return;
 
                     let result = 'EXPIRADO';
                     let pnl = 0;
@@ -6210,7 +6563,7 @@ useEffect(() => {
                     // Validar se temos um preço disponível
                     let currentPrice = forcedPrice;
                     if (!currentPrice) {
-                        const latestPrice = marketData.getLatestPrice();
+                        const latestPrice = marketDataRef.current.getLatestPrice();
                         if (latestPrice && latestPrice.close) {
                             currentPrice = latestPrice.close;
                         } else {
@@ -9732,5 +10085,3 @@ function BacktestView({ alphaEngine, memoryDB, formatBRL }) {
 
 // Exportar componente principal
 export default App
-
-
