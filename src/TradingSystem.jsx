@@ -477,7 +477,23 @@ const { useState, useEffect, useRef } = React
             // Log da última cotação
             const latest = candles[candles.length - 1];
             const latestTime = new Date(latest.timestamp);
+            const now = new Date();
+            const ageMinutes = (now - latestTime) / 60000;
+
             console.log(`   💰 Última cotação: ${latest.close.toFixed(5)} (${latestTime.toLocaleTimeString('pt-BR')})`);
+
+            // ⚠️ VALIDAÇÃO: Dados muito antigos podem indicar problema
+            if (ageMinutes > 60) {
+                console.warn(`   ⚠️ ATENÇÃO: Dados com ${ageMinutes.toFixed(0)} minutos de atraso!`);
+                console.warn(`   🕐 Última atualização: ${latestTime.toLocaleString('pt-BR')}`);
+                console.warn(`   🕐 Hora atual: ${now.toLocaleString('pt-BR')}`);
+                console.warn(`   💡 Possíveis causas:`);
+                console.warn(`      • Mercado Forex fechado (finais de semana/feriados)`);
+                console.warn(`      • Limite de API atingido (Twelve Data: 8 req/min grátis)`);
+                console.warn(`      • Problema de timezone ou cache da API`);
+            } else if (ageMinutes > 10) {
+                console.warn(`   ⚠️ Dados com ${ageMinutes.toFixed(0)} minutos de atraso`);
+            }
 
             return candles;
         }
@@ -1795,8 +1811,11 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                         // Outcome atualizado silenciosamente
                     }
                 } else {
+                    // Log não encontrado - pode ser normal se sinal foi gerado antes do auditSystem ser inicializado
                     if (window.debugAudit) {
-                        console.error('❌ [AUDIT] Log não encontrado para signalId:', signalId);
+                        console.warn('⚠️ [AUDIT] Log não encontrado para signalId:', signalId);
+                        console.warn('   💡 Isso é normal se o sinal foi gerado antes da auditoria estar ativa');
+                        console.warn(`   📊 Total de logs em auditLogs: ${this.auditLogs.length}`);
                     }
                 }
             }
@@ -2961,11 +2980,14 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                         if (this.stuckPriceCount === 2) {
                             console.warn(`⚠️ [HISTORICAL] Dados históricos travados: ${latestPrice.close.toFixed(6)}`);
                             console.warn(`   Timestamp: ${new Date(latestPrice.timestamp).toLocaleString('pt-BR')}`);
-                            
+
                             // Ação corretiva para dados históricos
-                            if (this.fetchKlinesFromREST) {
+                            if (this.fetchKlinesFromREST && this.symbol) {
+                                console.log(`🔄 [HISTORICAL] Tentando recarregar dados para: ${this.symbol}`);
                                 this.fetchKlinesFromREST(this.symbol, '5m', 20);
                                 this.stuckPriceCount = 0;
+                            } else if (!this.symbol) {
+                                console.warn(`⚠️ [HISTORICAL] Símbolo não definido, impossível recarregar dados`);
                             }
                         }
                     } else {
@@ -6434,7 +6456,8 @@ useEffect(() => {
                             const candleSource = expirationCandle.source || 'rest-api-fresh';
                             const hasReliableEntry = candleSource === 'rest-api-fresh' ||
                                                      candleSource === 'websocket-fresh' ||
-                                                     candleSource === 'rest-api-verification';
+                                                     candleSource === 'rest-api-verification' ||
+                                                     candleSource === 'rest-api-official';
 
                             console.log(`🧠 [ML] Preparando dados para treinamento:`);
                             console.log(`   🎯 Fonte dos dados: ${candleSource}`);
