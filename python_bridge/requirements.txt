@@ -1,0 +1,11 @@
+# IQ Option Bridge Server Dependencies
+
+# IQ Option API (não oficial)
+iqoptionapi>=5.0.0
+
+# Flask para servidor REST
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# Opcional: Para melhor logging e debugging
+python-dotenv>=1.0.0
