@@ -2321,12 +2321,69 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 console.log('🔍 connectTwelveDataWebSocket exists?', typeof this.connectTwelveDataWebSocket);
             }
 
-            // REST API Fallback
+            // REST API Fallback (detecta provider automaticamente)
             async fetchKlinesFromREST(symbol, interval = '5m', limit = 200) {
                 try {
+                    // Detectar provider ativo
+                    let provider = 'BINANCE'; // padrão
+                    let apiKey = null;
+
+                    if (window.apiManagerRef?.current) {
+                        const activeConn = window.apiManagerRef.current.getActiveConnection();
+                        if (activeConn) {
+                            provider = activeConn.provider;
+                            apiKey = activeConn.apiKey;
+                        }
+                    }
+
+                    // Se for Twelve Data, usar função específica
+                    if (provider === 'TWELVE_DATA' && apiKey) {
+                        console.log(`📊 [TWELVE DATA] Carregando dados históricos via REST...`);
+
+                        // Normalizar símbolo
+                        let cleanSymbol = symbol.replace(/\s/g, '').trim();
+                        if (cleanSymbol.length === 6 && !cleanSymbol.includes('/')) {
+                            cleanSymbol = cleanSymbol.substring(0, 3) + '/' + cleanSymbol.substring(3);
+                        }
+
+                        const tdInterval = interval.replace('m', 'min');
+                        const url = `https://api.twelvedata.com/time_series?symbol=${cleanSymbol}&interval=${tdInterval}&outputsize=${limit}&apikey=${apiKey}&format=JSON`;
+
+                        const response = await fetch(url);
+                        const data = await response.json();
+
+                        if (data.status === 'error' || !data.values) {
+                            throw new Error(data.message || 'Erro ao buscar dados Twelve Data');
+                        }
+
+                        const candles = data.values.reverse().map(v => ({
+                            timestamp: new Date(v.datetime).getTime(),
+                            open: parseFloat(v.open),
+                            high: parseFloat(v.high),
+                            low: parseFloat(v.low),
+                            close: parseFloat(v.close),
+                            volume: parseFloat(v.volume || 0),
+                            isClosed: true
+                        }));
+
+                        this.prices = candles;
+                        console.log(`✅ [TWELVE DATA] ${candles.length} candles carregados`);
+                        return candles;
+                    }
+
+                    // Binance (padrão)
+                    if (!symbol || symbol === 'null') {
+                        console.warn('⚠️ [BINANCE] Símbolo inválido, ignorando requisição');
+                        return null;
+                    }
+
                     const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
                     const response = await fetch(url);
                     const data = await response.json();
+
+                    if (data.code) {
+                        throw new Error(data.msg || 'Erro na API Binance');
+                    }
 
                     const candles = data.map(k => ({
                         timestamp: k[0],
@@ -3285,6 +3342,9 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                         this.twelveDataWs.close();
                         this.twelveDataWs = null;
                     }
+
+                    // ✅ Armazenar símbolo para uso em ações corretivas
+                    this.symbol = symbol;
 
                     // Normalizar símbolo: remover espaços mas MANTER barra (/)
                     let cleanSymbol = symbol.replace(/\s/g, '').trim();
