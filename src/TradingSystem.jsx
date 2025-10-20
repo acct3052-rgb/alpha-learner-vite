@@ -341,14 +341,18 @@ const { useState, useEffect, useRef } = React
                         return parsePolygonData(data);
 
                     case 'AWESOMEAPI':
-                        // AwesomeAPI - API brasileira gratuita para cotações
+                        // ⚠️ LIMITAÇÃO CRÍTICA: AwesomeAPI NÃO fornece candles de 5 minutos!
+                        // - /json/last: Retorna apenas ÚLTIMA cotação (1 ponto)
+                        // - /json/daily: Retorna histórico DIÁRIO (1 ponto/dia)
+                        // ⚠️ NÃO RECOMENDADA para opções binárias de 5 minutos!
+                        //
                         // Suporta: USD-BRL, EUR-BRL, BTC-BRL, etc.
                         // Com API key: 100.000 requisições/mês sem cache
-                        // Sem API key: dados em cache (1 minuto)
+                        // Sem API key: dados em cache (1 minuto de delay)
 
-                        // Endpoint correto: /json/daily para histórico
-                        // Formato: /json/daily/USD-BRL/100 (últimos 100 pontos)
-                        url = `https://economia.awesomeapi.com.br/json/daily/${symbol}/100`;
+                        // Usando /json/last para pegar cotação mais recente
+                        // Nota: Isso NÃO são candles reais, apenas pontos de preço!
+                        url = `https://economia.awesomeapi.com.br/json/last/${symbol}`;
 
                         // ✅ Adicionar API key se disponível E válida (elimina cache)
                         if (apiKey && apiKey !== 'PUBLIC_API' && apiKey.trim()) {
@@ -375,10 +379,19 @@ const { useState, useEffect, useRef } = React
 
                         data = await response.json();
 
-                        if (data.status === 'error' || !Array.isArray(data)) {
+                        // /json/last retorna objeto, não array
+                        // Formato: { "USDBRL": { bid, ask, timestamp, ... } }
+                        if (data.status === 'error') {
                             throw new Error(data.message || 'Erro na API AwesomeAPI');
                         }
-                        return parseAwesomeAPIData(data, symbol);
+
+                        // Converter objeto para array para parseAwesomeAPIData
+                        const dataArray = Object.values(data);
+                        if (!dataArray || dataArray.length === 0) {
+                            throw new Error('Sem dados da AwesomeAPI');
+                        }
+
+                        return parseAwesomeAPIData(dataArray, symbol);
 
                     case 'TWELVE_DATA':
                         // Twelve Data - Forex, ações e cripto
@@ -445,49 +458,83 @@ const { useState, useEffect, useRef } = React
         }
 
         function parseAwesomeAPIData(data, symbol) {
-            // AwesomeAPI retorna array de cotações históricas
+            // AwesomeAPI retorna última cotação (1 ponto apenas)
             if (!Array.isArray(data) || data.length === 0) {
                 throw new Error('Dados da cotação não encontrados');
             }
 
-            console.log(`📊 [AWESOMEAPI] Recebidos ${data.length} pontos de dados`);
+            console.log(`📊 [AWESOMEAPI] Recebidos ${data.length} ponto(s) de dados`);
 
-            // Converter dados da AwesomeAPI para formato de candles
-            const candles = data.map(quote => {
-                const timestamp = parseInt(quote.timestamp) * 1000; // Converter para ms
-                const bid = parseFloat(quote.bid);
-                const ask = parseFloat(quote.ask);
-                const high = parseFloat(quote.high);
-                const low = parseFloat(quote.low);
+            // ⚠️ IMPORTANTE: AwesomeAPI só retorna ÚLTIMO preço, não candles de 5min
+            // Vamos criar "pseudo-candles" para compatibilidade com sistema
+            const quote = data[0]; // Pegar primeiro (e único) elemento
+            const timestamp = parseInt(quote.timestamp) * 1000; // Converter para ms
+            const bid = parseFloat(quote.bid);
+            const ask = parseFloat(quote.ask);
+            const high = parseFloat(quote.high);
+            const low = parseFloat(quote.low);
 
-                // Usar a média entre bid e ask para maior precisão
-                const midPrice = (bid + ask) / 2;
+            // Usar a média entre bid e ask para maior precisão
+            const midPrice = (bid + ask) / 2;
 
-                // Criar candle a partir dos dados disponíveis
-                return {
-                    timestamp: timestamp,
+            // Criar "candle" atual
+            const currentCandle = {
+                timestamp: timestamp,
+                open: midPrice,
+                high: Math.max(high, midPrice),
+                low: Math.min(low, midPrice),
+                close: midPrice,
+                volume: 0,
+                isRealtime: true // Flag indicando que é cotação em tempo real, não candle histórico
+            };
+
+            // Simular histórico criando candles "falsos" (todos com mesmo preço)
+            // Isso é necessário para indicadores técnicos funcionarem
+            const candles = [];
+            const now = Date.now();
+            const fiveMinutes = 5 * 60 * 1000;
+
+            // Criar 100 candles "simulados" retroativamente
+            for (let i = 100; i > 0; i--) {
+                const candleTimestamp = timestamp - (i * fiveMinutes);
+                candles.push({
+                    timestamp: candleTimestamp,
                     open: midPrice,
-                    high: Math.max(high, midPrice),
-                    low: Math.min(low, midPrice),
-                    close: midPrice, // Usar média bid/ask
-                    volume: 0 // AwesomeAPI não fornece volume
-                };
-            }).reverse(); // Reverter para ordem cronológica (mais antigo -> mais recente)
-
-            // Log da última cotação
-            const latest = candles[candles.length - 1];
-            const latestTime = new Date(latest.timestamp);
-            const now = new Date();
-            const ageMinutes = (now - latestTime) / 60000;
-
-            console.log(`   💰 Última cotação: ${latest.close.toFixed(6)} (${latestTime.toLocaleTimeString('pt-BR')})`);
-
-            // ⚠️ AVISO: Dados muito antigos para opções binárias
-            if (ageMinutes > 10) {
-                console.warn(`   ⚠️ ATENÇÃO: Dados com ${ageMinutes.toFixed(0)} minutos de atraso!`);
-                console.warn(`   ⚠️ Para opções binárias, use dados em tempo real (< 1 minuto)`);
-                console.warn(`   💡 AwesomeAPI pode ter cache. Considere usar Binance/Alpha Vantage para dados frescos.`);
+                    high: midPrice,
+                    low: midPrice,
+                    close: midPrice,
+                    volume: 0,
+                    isSimulated: true // Flag indicando que é simulado
+                });
             }
+
+            // Adicionar candle atual no final
+            candles.push(currentCandle);
+
+            // Validar idade dos dados
+            const latestTime = new Date(timestamp);
+            const nowTime = new Date();
+            const ageSeconds = (nowTime - latestTime) / 1000;
+
+            console.log(`   💰 Última cotação: ${midPrice.toFixed(6)} (${latestTime.toLocaleTimeString('pt-BR')})`);
+            console.log(`   ⏰ Idade dos dados: ${ageSeconds.toFixed(1)}s`);
+
+            // ⚠️ AVISO CRÍTICO: Dados com delay
+            if (ageSeconds > 60) {
+                console.error(`   🚨 CRÍTICO: Dados com ${ageSeconds.toFixed(0)}s de atraso!`);
+                console.error(`   🚨 Cache da AwesomeAPI (sem API key) = 60s delay`);
+                console.error(`   💡 SOLUÇÃO: Use API key AwesomeAPI OU troque para Twelve Data/Binance`);
+            } else if (ageSeconds > 10) {
+                console.warn(`   ⚠️ ATENÇÃO: Dados com ${ageSeconds.toFixed(0)}s de atraso!`);
+                console.warn(`   💡 Para opções binárias, ideal é <5s de delay`);
+            } else {
+                console.log(`   ✅ Dados frescos (${ageSeconds.toFixed(1)}s)`);
+            }
+
+            // ⚠️ AVISO sobre candles simulados
+            console.warn(`   ⚠️ LIMITAÇÃO: AwesomeAPI não fornece candles de 5min`);
+            console.warn(`   ⚠️ Sistema criou ${candles.length - 1} candles SIMULADOS para indicadores`);
+            console.warn(`   💡 Para candles REAIS, use Twelve Data (Forex) ou Binance (Cripto)`);
 
             return candles;
         }
