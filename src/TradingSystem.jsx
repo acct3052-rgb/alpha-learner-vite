@@ -2533,11 +2533,35 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                 }
             }
 
+            // Helper: Verificar se mercado Forex está aberto (UTC)
+            isForexMarketOpen(timestamp) {
+                const date = new Date(timestamp);
+                const utcDay = date.getUTCDay(); // 0 = Domingo, 6 = Sábado
+                const utcHour = date.getUTCHours();
+
+                // Mercado Forex fecha sexta 22:00 UTC e reabre domingo 22:00 UTC
+                if (utcDay === 6) return false; // Sábado fechado
+                if (utcDay === 0 && utcHour < 22) return false; // Domingo antes das 22h fechado
+                if (utcDay === 5 && utcHour >= 22) return false; // Sexta depois das 22h fechado
+
+                return true;
+            }
+
             // Buscar candle específico via Twelve Data API
             async fetchSpecificCandleFromTwelveData(symbol, interval = '5m', timestamp, apiKey, priority = 'normal') {
                 try {
                     const priorityLabel = priority === 'critical' ? '🚨 CRÍTICO' : '📊';
                     console.log(`${priorityLabel} [TWELVE DATA] Buscando candle específico: ${symbol} em ${new Date(timestamp).toLocaleString('pt-BR')}`);
+
+                    // ⚠️ VALIDAÇÃO: Verificar se mercado está aberto
+                    if (!this.isForexMarketOpen(timestamp)) {
+                        const date = new Date(timestamp);
+                        console.warn(`⚠️ [FOREX FECHADO] Mercado fechado em ${date.toLocaleString('pt-BR')}`);
+                        console.warn(`   📅 Dia da semana (UTC): ${['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][date.getUTCDay()]}`);
+                        console.warn(`   🕐 Hora (UTC): ${date.getUTCHours()}:00`);
+                        console.warn(`   💡 Forex abre domingo 22:00 UTC e fecha sexta 22:00 UTC`);
+                        return null;
+                    }
 
                     // ✅ CACHE: Verificar se o candle já existe no cache
                     const cachedCandle = this.prices.find(p => Math.abs(p.timestamp - timestamp) < 60000); // 1min tolerância
@@ -2585,7 +2609,24 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     const data = await response.json();
 
                     if (data.status === 'error') {
-                        console.error('❌ [TWELVE DATA] Erro da API:', data.message);
+                        const errorMsg = data.message || 'Erro desconhecido';
+                        console.error('❌ [TWELVE DATA] Erro da API:', errorMsg);
+
+                        // Erro específico: dados não disponíveis para a data
+                        if (errorMsg.includes('No data is available')) {
+                            const date = new Date(timestamp);
+                            console.warn(`⚠️ [DADOS INDISPONÍVEIS] API não tem dados para ${date.toLocaleString('pt-BR')}`);
+                            console.warn(`   💡 Possíveis causas:`);
+                            console.warn(`      • Mercado fechado (fim de semana/feriado)`);
+                            console.warn(`      • Timestamp muito recente (API ainda processando)`);
+                            console.warn(`      • Timestamp muito antigo (fora do período disponível)`);
+
+                            // Verificar se é fim de semana
+                            if (!this.isForexMarketOpen(timestamp)) {
+                                console.warn(`   🔴 CONFIRMADO: Mercado Forex estava FECHADO neste horário`);
+                            }
+                        }
+
                         return null;
                     }
 
@@ -5749,6 +5790,17 @@ useEffect(() => {
                                 console.log(`   ⏰ Entrada: ${signal.entryTime.toLocaleTimeString('pt-BR')}`);
                                 console.log(`   🏁 Expiração: ${signal.expirationTime.toLocaleTimeString('pt-BR')}`);
 
+                                // ⚠️ AVISO: Verificar se mercado estará aberto na expiração
+                                if (marketDataRef.current?.isForexMarketOpen) {
+                                    const expirationTs = signal.expirationTime.getTime();
+                                    if (!marketDataRef.current.isForexMarketOpen(expirationTs)) {
+                                        console.warn(`⚠️ [AVISO] Sinal expira com mercado FECHADO!`);
+                                        console.warn(`   📅 Expiração: ${signal.expirationTime.toLocaleString('pt-BR')}`);
+                                        console.warn(`   💡 Resultado pode não ser verificável (mercado Forex fechado)`);
+                                        showNotification(`⚠️ Sinal expira com mercado fechado`, 'warning');
+                                    }
+                                }
+
                                 setSignals(prev => {
                                     const newSignals = [signal, ...prev];
                                     // Manter apenas os 10 mais recentes
@@ -6035,6 +6087,25 @@ useEffect(() => {
                             console.log(`⏰ [BINARY] Iniciando verificação sinal ${signal.id.toString().slice(0, 8)}...`);
                             console.log(`   Buffer: ${bufferTime/1000}s após expiração`);
                             console.log(`   ExpirationTimestamp: ${new Date(expirationTimestamp).toLocaleString('pt-BR')}`);
+
+                            // ⚠️ VALIDAÇÃO: Verificar se mercado estava aberto no momento da expiração
+                            if (marketDataRef.current?.isForexMarketOpen) {
+                                const wasMarketOpen = marketDataRef.current.isForexMarketOpen(expirationTimestamp);
+                                if (!wasMarketOpen) {
+                                    const date = new Date(expirationTimestamp);
+                                    console.warn(`🔴 [MERCADO FECHADO] Sinal expirou com mercado Forex fechado`);
+                                    console.warn(`   📅 Data/Hora: ${date.toLocaleString('pt-BR')} (UTC: ${date.toUTCString()})`);
+                                    console.warn(`   💡 Não é possível verificar resultado - mercado fechado`);
+
+                                    // Marcar como EXPIRADO por mercado fechado
+                                    signal.status = 'EXPIRADO';
+                                    signal.pnl = 0;
+                                    signal.finalPrice = signal.price;
+                                    setSignals(prev => prev.map(s => s.id === signal.id ? signal : s));
+                                    showNotification(`⚠️ Sinal expirado - mercado fechado`);
+                                    return;
+                                }
+                            }
 
                         // 🎯 BUSCA INTELIGENTE: Cache-First + REST API (otimizado)
                         const getExpirationCandleWithRetry = async (maxRetries = 5, delayMs = 2000) => {
