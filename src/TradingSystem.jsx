@@ -9156,66 +9156,91 @@ ${signal.divergence ? `Divergencia: ${signal.divergence.type}` : ''}
                             </select>
                         </div>
 
-                        {/* AwesomeAPI não precisa de chave */}
-                        {selectedProvider !== 'AWESOMEAPI' && (
-                            <>
-                                <div className="form-group">
-                                    <label className="form-label">API Key</label>
-                                    <input
-                                        type="password"
-                                        className="form-input"
-                                        value={apiKey}
-                                        onChange={(e) => setApiKey(e.target.value)}
-                                    />
-                                </div>
-
-                                {API_PROVIDERS[selectedProvider].requiresSecret && (
-                                    <div className="form-group">
-                                        <label className="form-label">Secret Key</label>
-                                        <input
-                                            type="password"
-                                            className="form-input"
-                                            value={secretKey}
-                                            onChange={(e) => setSecretKey(e.target.value)}
-                                        />
-                                    </div>
+                        {/* API Key (obrigatória para alguns, opcional para AwesomeAPI) */}
+                        <div className="form-group">
+                            <label className="form-label">
+                                API Key
+                                {selectedProvider === 'AWESOMEAPI' && (
+                                    <span style={{ fontSize: '0.85em', color: '#888', marginLeft: '8px' }}>
+                                        (Opcional - Recomendada para 100k req/mês sem cache)
+                                    </span>
                                 )}
-                            </>
+                            </label>
+                            <input
+                                type="password"
+                                className="form-input"
+                                value={apiKey}
+                                onChange={(e) => setApiKey(e.target.value)}
+                                placeholder={selectedProvider === 'AWESOMEAPI' ? 'Deixe vazio para usar sem API key (com cache)' : 'Digite sua API key'}
+                            />
+                        </div>
+
+                        {API_PROVIDERS[selectedProvider]?.requiresSecret && (
+                            <div className="form-group">
+                                <label className="form-label">Secret Key</label>
+                                <input
+                                    type="password"
+                                    className="form-input"
+                                    value={secretKey}
+                                    onChange={(e) => setSecretKey(e.target.value)}
+                                />
+                            </div>
                         )}
 
                         {/* Aviso para AwesomeAPI */}
                         {selectedProvider === 'AWESOMEAPI' && (
-                            <div className="success-box">
-                                ✅ Esta API é pública e gratuita. Não requer chaves de acesso.<br/>
-                                <strong>Símbolos disponíveis:</strong> USD-BRL, EUR-BRL, BTC-BRL, ETH-BRL, etc.
+                            <div className="info-box" style={{ backgroundColor: '#e3f2fd', padding: '12px', borderRadius: '6px', marginBottom: '15px' }}>
+                                <strong>ℹ️ AwesomeAPI - API Brasileira</strong><br/>
+                                <strong>Símbolos:</strong> USD-BRL, EUR-BRL, BTC-BRL, ETH-BRL, etc.<br/>
+                                <strong>Sem API Key:</strong> Grátis com dados em cache (pode ter delay)<br/>
+                                <strong>Com API Key:</strong> 100.000 req/mês sem cache (dados em tempo real)<br/>
+                                <a href="https://docs.awesomeapi.com.br/instrucoes-api-key" target="_blank" rel="noopener noreferrer">
+                                    📖 Como obter API Key
+                                </a>
                             </div>
                         )}
 
-                        {/* AwesomeAPI não precisa de API Key - botão direto */}
-                        {selectedProvider === 'AWESOMEAPI' ? (
-                            <button
-                                className="btn btn-primary"
-                                onClick={() => {
-                                    apiManager.addConnection('AWESOMEAPI', 'PUBLIC_API', null);
-                                    apiManager.updateStatus('AWESOMEAPI', 'connected');
-                                    apiManager.setActive('AWESOMEAPI');
-                                    showNotification('✅ AwesomeAPI ativada! (API pública brasileira)');
-                                    setUpdateTrigger(prev => prev + 1);
-                                }}
-                                style={{ width: '100%' }}
-                            >
-                                ⚡ Ativar AwesomeAPI (Sem chave necessária)
-                            </button>
-                        ) : (
-                            <button
-                                className="btn btn-primary"
-                                onClick={handleTest}
-                                disabled={testing}
-                                style={{ width: '100%' }}
-                            >
-                                {testing ? '🔄 Testando...' : '🔗 Salvar e Testar'}
-                            </button>
-                        )}
+                        {/* Botão de teste/ativação */}
+                        <button
+                            className="btn btn-primary"
+                            onClick={async () => {
+                                if (selectedProvider === 'AWESOMEAPI') {
+                                    // AwesomeAPI: pode usar com ou sem API key
+                                    const keyToUse = apiKey.trim() || null;
+
+                                    if (keyToUse) {
+                                        // Testar conexão com API key
+                                        setTesting(true);
+                                        const result = await testAPIConnection('AWESOMEAPI', keyToUse, null);
+                                        setTesting(false);
+
+                                        if (result.success) {
+                                            apiManager.addConnection('AWESOMEAPI', keyToUse, null);
+                                            apiManager.updateStatus('AWESOMEAPI', 'connected');
+                                            apiManager.setActive('AWESOMEAPI');
+                                            showNotification('✅ AwesomeAPI ativada COM API key (100k req/mês sem cache)');
+                                            setUpdateTrigger(prev => prev + 1);
+                                        } else {
+                                            showNotification(`❌ Erro: ${result.message}`);
+                                        }
+                                    } else {
+                                        // Ativar sem API key
+                                        apiManager.addConnection('AWESOMEAPI', null, null);
+                                        apiManager.updateStatus('AWESOMEAPI', 'connected');
+                                        apiManager.setActive('AWESOMEAPI');
+                                        showNotification('✅ AwesomeAPI ativada SEM API key (dados podem ter cache)');
+                                        setUpdateTrigger(prev => prev + 1);
+                                    }
+                                } else {
+                                    // Outros providers: teste normal
+                                    handleTest();
+                                }
+                            }}
+                            disabled={testing}
+                            style={{ width: '100%' }}
+                        >
+                            {testing ? '🔄 Testando...' : (selectedProvider === 'AWESOMEAPI' ? '⚡ Ativar AwesomeAPI' : '🔗 Salvar e Testar')}
+                        </button>
 
                         {testResult && (
                             <div className={testResult.success ? 'success-box' : 'error-box'} style={{ marginTop: '15px' }}>
