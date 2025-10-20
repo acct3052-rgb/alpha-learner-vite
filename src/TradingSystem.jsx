@@ -47,7 +47,7 @@ const { useState, useEffect, useRef } = React
                 icon: '🇧🇷',
                 requiresSecret: false,
                 baseUrl: 'https://economia.awesomeapi.com.br',
-                description: 'API brasileira gratuita (USD-BRL, BTC-BRL, EUR-BRL, etc.)'
+                description: 'API brasileira (USD-BRL, EUR-BRL). API key opcional: 100k req/mês sem cache'
             },
             TWELVE_DATA: {
                 name: 'Twelve Data',
@@ -201,12 +201,22 @@ const { useState, useEffect, useRef } = React
                 this.limits = {
                     'BINANCE': { calls: 0, maxCalls: 1200, windowMs: 60000, lastReset: Date.now(), queue: [] },
                     'POLYGON': { calls: 0, maxCalls: 5, windowMs: 60000, lastReset: Date.now(), queue: [] },
-                    'AWESOMEAPI': { calls: 0, maxCalls: 100, windowMs: 60000, lastReset: Date.now(), queue: [] },
+                    'AWESOMEAPI': {
+                        calls: 0,
+                        maxCalls: 3333,  // ~100k requisições/mês = 3333/dia (conservador)
+                        windowMs: 24 * 60 * 60 * 1000, // 24 horas
+                        lastReset: Date.now(),
+                        queue: [],
+                        monthlyLimit: 100000, // Limite total mensal com API key
+                        monthlyUsage: 0,
+                        monthStart: Date.now()
+                    },
                     'TWELVE_DATA': { calls: 0, maxCalls: 4, windowMs: 60000, lastReset: Date.now(), queue: [], callTimestamps: [] } // 4 calls por minuto (margem de segurança - limite real: 8)
                 };
 
-                // Log inicial do limite do Twelve Data
+                // Log inicial dos limites
                 console.log('🚦 [RATE LIMITER] Twelve Data: 4 requisições por minuto (limite conservador)');
+                console.log('🚦 [RATE LIMITER] AwesomeAPI: 3333 requisições por dia (~100k/mês com API key)');
             }
 
             async checkLimit(provider, priority = 'normal') {
@@ -333,8 +343,18 @@ const { useState, useEffect, useRef } = React
                     case 'AWESOMEAPI':
                         // AwesomeAPI - API brasileira gratuita para cotações
                         // Suporta: USD-BRL, EUR-BRL, BTC-BRL, etc.
-                        // Usando endpoint sequencial para obter histórico (limite 100 pontos)
+                        // Com API key: 100.000 requisições/mês sem cache
+                        // Sem API key: dados em cache (pode ter delay)
                         url = `https://economia.awesomeapi.com.br/json/${symbol}/100`;
+
+                        // ✅ Adicionar API key se disponível (elimina cache)
+                        if (apiKey) {
+                            url += `?token=${apiKey}`;
+                            console.log(`🔑 [AWESOMEAPI] Usando API key (dados sem cache)`);
+                        } else {
+                            console.warn(`⚠️ [AWESOMEAPI] Sem API key - dados podem ter cache/delay`);
+                        }
+
                         response = await fetch(url);
                         data = await response.json();
 
@@ -2438,6 +2458,11 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                         return await this.fetchSpecificCandleFromTwelveData(symbol, interval, timestamp, apiKey, priority);
                     }
 
+                    // Se for AwesomeAPI (forex BRL), usar API específica
+                    if (provider === 'AWESOMEAPI') {
+                        return await this.fetchSpecificCandleFromAwesomeAPI(symbol, interval, timestamp, apiKey, priority);
+                    }
+
                     // Binance (padrão para cripto)
                     // Buscar alguns candles ao redor do timestamp alvo
                     const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&startTime=${timestamp - 600000}&endTime=${timestamp + 600000}&limit=20`;
@@ -2701,6 +2726,109 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
 
                 } catch (error) {
                     console.error('❌ [TWELVE DATA] Erro ao buscar candle específico:', error);
+                    return null;
+                }
+            }
+
+            // Buscar candle específico via AwesomeAPI
+            async fetchSpecificCandleFromAwesomeAPI(symbol, interval = '5m', timestamp, apiKey, priority = 'normal') {
+                try {
+                    const priorityLabel = priority === 'critical' ? '🚨 CRÍTICO' : '📊';
+                    console.log(`${priorityLabel} [AWESOMEAPI] Buscando candle específico: ${symbol} em ${new Date(timestamp).toLocaleString('pt-BR')}`);
+
+                    // ✅ CACHE: Verificar se o candle já existe no cache
+                    const cachedCandle = this.prices.find(p => Math.abs(p.timestamp - timestamp) < 60000); // 1min tolerância
+                    if (cachedCandle) {
+                        console.log(`✅ [CACHE HIT] Candle encontrado no cache - evitando requisição`);
+                        console.log(`   ⏰ Timestamp: ${new Date(cachedCandle.timestamp).toLocaleString('pt-BR')}`);
+                        console.log(`   📊 Close: ${cachedCandle.close.toFixed(5)}`);
+                        return cachedCandle;
+                    }
+
+                    // 🚦 RATE LIMIT: Verificar antes de fazer requisição
+                    if (window.rateLimiter) {
+                        await window.rateLimiter.checkLimit('AWESOMEAPI', priority);
+                    }
+
+                    // 📅 Calcular range de datas para buscar
+                    const targetDate = new Date(timestamp);
+                    const startDate = new Date(timestamp - 24 * 60 * 60 * 1000); // 1 dia antes
+                    const endDate = new Date(timestamp + 24 * 60 * 60 * 1000); // 1 dia depois
+
+                    const formatDate = (date) => {
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        return `${year}${month}${day}`;
+                    };
+
+                    // 📡 Buscar dados históricos com filtro de data
+                    const url = `https://economia.awesomeapi.com.br/json/daily/${symbol}/30${apiKey ? `?token=${apiKey}` : ''}`;
+
+                    console.log(`📡 [AWESOMEAPI] Fazendo requisição REST API...`);
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (!Array.isArray(data) || data.length === 0) {
+                        console.error('❌ [AWESOMEAPI] Nenhum dado retornado');
+                        return null;
+                    }
+
+                    console.log(`📊 [AWESOMEAPI] Recebidos ${data.length} pontos de dados`);
+
+                    // Converter para formato de candles
+                    const candles = data.map(quote => {
+                        const candleTimestamp = parseInt(quote.timestamp) * 1000;
+                        const bid = parseFloat(quote.bid);
+                        const ask = parseFloat(quote.ask);
+                        const high = parseFloat(quote.high);
+                        const low = parseFloat(quote.low);
+                        const midPrice = (bid + ask) / 2;
+
+                        return {
+                            timestamp: candleTimestamp,
+                            open: midPrice,
+                            high: Math.max(high, midPrice),
+                            low: Math.min(low, midPrice),
+                            close: midPrice,
+                            volume: 0,
+                            isClosed: true,
+                            source: 'rest-api-official'
+                        };
+                    });
+
+                    // Encontrar candle mais próximo do timestamp alvo
+                    const targetCandle = candles.reduce((closest, candle) => {
+                        if (!closest) return candle;
+                        const currentDiff = Math.abs(candle.timestamp - timestamp);
+                        const closestDiff = Math.abs(closest.timestamp - timestamp);
+                        return currentDiff < closestDiff ? candle : closest;
+                    }, null);
+
+                    if (targetCandle) {
+                        const timeDiff = Math.abs(targetCandle.timestamp - timestamp) / 60000; // em minutos
+
+                        console.log(`🎯 [AWESOMEAPI] Candle encontrado:`);
+                        console.log(`   ⏰ Timestamp: ${new Date(targetCandle.timestamp).toLocaleString('pt-BR')}`);
+                        console.log(`   📊 Close: ${targetCandle.close.toFixed(5)}`);
+                        console.log(`   ⏱️ Diferença: ${timeDiff.toFixed(1)} minutos do alvo`);
+
+                        // Adicionar ao cache
+                        candles.forEach(candle => {
+                            const existingIndex = this.prices.findIndex(p => p.timestamp === candle.timestamp);
+                            if (existingIndex === -1) {
+                                this.prices.push(candle);
+                            }
+                        });
+
+                        return targetCandle;
+                    } else {
+                        console.error('❌ [AWESOMEAPI] Nenhum candle correspondente encontrado');
+                        return null;
+                    }
+
+                } catch (error) {
+                    console.error('❌ [AWESOMEAPI] Erro ao buscar candle específico:', error);
                     return null;
                 }
             }
