@@ -344,18 +344,35 @@ const { useState, useEffect, useRef } = React
                         // AwesomeAPI - API brasileira gratuita para cotações
                         // Suporta: USD-BRL, EUR-BRL, BTC-BRL, etc.
                         // Com API key: 100.000 requisições/mês sem cache
-                        // Sem API key: dados em cache (pode ter delay)
-                        url = `https://economia.awesomeapi.com.br/json/${symbol}/100`;
+                        // Sem API key: dados em cache (1 minuto)
+
+                        // Endpoint correto: /json/daily para histórico
+                        // Formato: /json/daily/USD-BRL/100 (últimos 100 pontos)
+                        url = `https://economia.awesomeapi.com.br/json/daily/${symbol}/100`;
 
                         // ✅ Adicionar API key se disponível E válida (elimina cache)
                         if (apiKey && apiKey !== 'PUBLIC_API' && apiKey.trim()) {
                             url += `?token=${apiKey}`;
                             console.log(`🔑 [AWESOMEAPI] Usando API key (dados sem cache)`);
                         } else {
-                            console.log(`📊 [AWESOMEAPI] Modo público - sem API key (dados podem ter cache)`);
+                            console.log(`📊 [AWESOMEAPI] Modo público - sem API key (dados podem ter cache de 1min)`);
                         }
 
-                        response = await fetch(url);
+                        console.log(`📡 [AWESOMEAPI] URL: ${url}`);
+
+                        // Fazer requisição com header se tiver API key (método alternativo)
+                        const hasValidKey = apiKey && apiKey !== 'PUBLIC_API' && apiKey.trim();
+                        const headers = hasValidKey ? { 'x-api-key': apiKey } : {};
+
+                        response = await fetch(url, { headers });
+
+                        // Log da resposta para debug
+                        console.log(`📊 [AWESOMEAPI] Status: ${response.status} ${response.statusText}`);
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+
                         data = await response.json();
 
                         if (data.status === 'error' || !Array.isArray(data)) {
@@ -2768,12 +2785,23 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     const url = `https://economia.awesomeapi.com.br/json/daily/${symbol}/30${hasValidKey ? `?token=${apiKey}` : ''}`;
 
                     console.log(`📡 [AWESOMEAPI] Fazendo requisição REST API...`);
+                    console.log(`📡 [AWESOMEAPI] URL: ${url}`);
                     if (hasValidKey) {
                         console.log(`🔑 [AWESOMEAPI] Com API key (sem cache)`);
                     } else {
                         console.log(`📊 [AWESOMEAPI] Sem API key (modo público com cache)`);
                     }
-                    const response = await fetch(url);
+
+                    // Enviar API key também via header (dupla autenticação)
+                    const headers = hasValidKey ? { 'x-api-key': apiKey } : {};
+                    const response = await fetch(url, { headers });
+
+                    console.log(`📊 [AWESOMEAPI] Status: ${response.status} ${response.statusText}`);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
                     const data = await response.json();
 
                     if (!Array.isArray(data) || data.length === 0) {
