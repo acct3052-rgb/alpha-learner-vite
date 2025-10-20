@@ -141,13 +141,13 @@ const { useState, useEffect, useRef } = React
     }
 
     addConnection(provider, apiKey, secretKey = null) {
-        // APIs que não precisam de chave (como AwesomeAPI)
-        const providerConfig = API_PROVIDERS[provider];
-        const needsKey = providerConfig && (providerConfig.requiresSecret || provider !== 'AWESOMEAPI');
+        // AwesomeAPI pode funcionar com ou sem API key
+        // Se apiKey for null/undefined/vazio, salvar como null (não adiciona token na URL)
+        const cleanApiKey = apiKey && apiKey.trim() ? apiKey.trim() : null;
 
         this.connections.set(provider, {
             provider,
-            apiKey: needsKey ? apiKey : 'PUBLIC_API',
+            apiKey: cleanApiKey,
             secretKey,
             status: 'disconnected',
             addedAt: new Date().toISOString()
@@ -347,12 +347,12 @@ const { useState, useEffect, useRef } = React
                         // Sem API key: dados em cache (pode ter delay)
                         url = `https://economia.awesomeapi.com.br/json/${symbol}/100`;
 
-                        // ✅ Adicionar API key se disponível (elimina cache)
-                        if (apiKey) {
+                        // ✅ Adicionar API key se disponível E válida (elimina cache)
+                        if (apiKey && apiKey !== 'PUBLIC_API' && apiKey.trim()) {
                             url += `?token=${apiKey}`;
                             console.log(`🔑 [AWESOMEAPI] Usando API key (dados sem cache)`);
                         } else {
-                            console.warn(`⚠️ [AWESOMEAPI] Sem API key - dados podem ter cache/delay`);
+                            console.log(`📊 [AWESOMEAPI] Modo público - sem API key (dados podem ter cache)`);
                         }
 
                         response = await fetch(url);
@@ -2763,9 +2763,16 @@ Score de Confiança: ${data.score}%${data.accuracy !== null ? `\nPrecisão da An
                     };
 
                     // 📡 Buscar dados históricos com filtro de data
-                    const url = `https://economia.awesomeapi.com.br/json/daily/${symbol}/30${apiKey ? `?token=${apiKey}` : ''}`;
+                    // Adicionar token apenas se API key for válida (não vazia, não 'PUBLIC_API')
+                    const hasValidKey = apiKey && apiKey !== 'PUBLIC_API' && apiKey.trim();
+                    const url = `https://economia.awesomeapi.com.br/json/daily/${symbol}/30${hasValidKey ? `?token=${apiKey}` : ''}`;
 
                     console.log(`📡 [AWESOMEAPI] Fazendo requisição REST API...`);
+                    if (hasValidKey) {
+                        console.log(`🔑 [AWESOMEAPI] Com API key (sem cache)`);
+                    } else {
+                        console.log(`📊 [AWESOMEAPI] Sem API key (modo público com cache)`);
+                    }
                     const response = await fetch(url);
                     const data = await response.json();
 
